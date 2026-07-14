@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "@/auth/session";
+import { db } from "@/db/db";
 import { isCloud, cloudStatus, cloudSignOut } from "@/db/cloud";
 import { resetLocalCache } from "@/db/sync";
 
@@ -20,9 +21,15 @@ export function CloudBoot() {
     if (!isCloud) return;
     let cancelled = false;
     (async () => {
+      // Bila cache lokal sudah terisi (returning user), tampilkan aplikasi
+      // SEGERA dan cek status di latar belakang — tanpa layar "Menghubungkan".
+      const localReady = (await db.users.count()) > 0;
+      if (localReady && !cancelled) setReady(true);
+
       const r = await cloudStatus();
       if (cancelled) return;
       if (r.ok && !r.hasUsers) {
+        // Cloud kosong/di-reset → buang cache basi & mulai fresh.
         await resetLocalCache();
         await cloudSignOut();
         logout();

@@ -19,6 +19,7 @@ interface SessionCtx {
   ready: boolean;
   hasUsers: boolean;
   login: (username: string, pin: string) => Promise<boolean>;
+  adopt: (userId: string) => void;
   logout: () => void;
 }
 
@@ -83,6 +84,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return true;
   }
 
+  /** Set sesi langsung berdasarkan id (dipakai setelah server memverifikasi
+   *  PIN di mode cloud — hindari hashing PIN ulang di perangkat). */
+  function adopt(userId: string) {
+    localStorage.setItem(SESSION_KEY, userId);
+    setUserId(userId);
+  }
+
   function logout() {
     localStorage.removeItem(SESSION_KEY);
     setUserId(null);
@@ -90,7 +98,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ user, ready, hasUsers: (users?.length ?? 0) > 0, login, logout }}
+      value={{
+        user,
+        ready,
+        hasUsers: (users?.length ?? 0) > 0,
+        login,
+        adopt,
+        logout,
+      }}
     >
       {children}
     </Ctx.Provider>

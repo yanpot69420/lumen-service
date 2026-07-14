@@ -65,15 +65,17 @@ export async function cloudSetup(
   return { ok: true, recoveryCode: res.recoveryCode };
 }
 
-/** Verifikasi PIN di server & buat sesi cloud; users ikut tersinkron ke lokal. */
+/** Verifikasi PIN di server & buat sesi cloud; users ikut tersinkron ke lokal.
+ *  Mengembalikan userId agar klien bisa set sesi langsung tanpa hash PIN ulang. */
 export async function cloudLogin(
   username: string,
   pin: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; userId?: string; error?: string }> {
   const res = await invokeAuth("login", { username, pin });
   if (!res?.ok) return { ok: false, error: res?.error };
   if (!(await adoptSession(res.tokenHash)))
     return { ok: false, error: "Gagal membuat sesi" };
   await pullCore();
-  return { ok: true };
+  const userId = String(res.email ?? "").split("@")[0] || undefined;
+  return { ok: true, userId };
 }

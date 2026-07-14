@@ -306,12 +306,13 @@ const ORDER = [
 ];
 
 // ---- Capture perubahan lokal → outbox (via Dexie hooks) ----
-let applyingRemote = false;
+// Penghitung (bukan boolean) agar aman saat beberapa applyRemote berjalan paralel.
+let applyDepth = 0;
 const pending = new Map<string, Set<string>>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function capture(table: string, key: unknown) {
-  if (applyingRemote || !isCloud || key == null) return;
+  if (applyDepth > 0 || !isCloud || key == null) return;
   if (!pending.has(table)) pending.set(table, new Set());
   pending.get(table)!.add(String(key));
   if (!flushTimer) flushTimer = setTimeout(flushCapture, 0);
@@ -346,11 +347,11 @@ function registerHooks() {
 
 /** Terapkan baris dari cloud ke Dexie tanpa memicu outbox (hindari loop). */
 async function applyRemote(fn: () => Promise<void>) {
-  applyingRemote = true;
+  applyDepth++;
   try {
     await fn();
   } finally {
-    applyingRemote = false;
+    applyDepth--;
   }
 }
 
@@ -396,23 +397,28 @@ async function pushBatch(): Promise<boolean> {
 }
 
 // ---- Pull ----
+async function pullOne(name: string): Promise<void> {
+  if (!supabase) return;
+  const reg = M[name];
+  let query = supabase.from(reg.remote).select("*");
+  if (name === "audit")
+    query = query.order("at", { ascending: false }).limit(1000);
+  const { data, error } = await query;
+  if (error) {
+    console.warn("[sync] pull gagal", name, error.message);
+    return;
+  }
+  if (data && data.length) {
+    await applyRemote(async () => {
+      await db.table(name).bulkPut(data.map(reg.toLocal));
+    });
+  }
+}
+
+// Tarik banyak tabel secara paralel (tabel independen → lebih cepat).
 async function pullTables(names: string[]): Promise<void> {
   if (!supabase) return;
-  for (const name of names) {
-    const reg = M[name];
-    let query = supabase.from(reg.remote).select("*");
-    if (name === "audit") query = query.order("at", { ascending: false }).limit(1000);
-    const { data, error } = await query;
-    if (error) {
-      console.warn("[sync] pull gagal", name, error.message);
-      continue;
-    }
-    if (data && data.length) {
-      await applyRemote(async () => {
-        await db.table(name).bulkPut(data.map(reg.toLocal));
-      });
-    }
-  }
+  await Promise.all(names.map(pullOne));
 }
 
 /** Tarik data inti (users + settings) — dipakai saat login agar cache siap. */

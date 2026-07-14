@@ -18,7 +18,7 @@ function normalizeRecoveryCode(raw: string): string {
 }
 
 export function LoginPage() {
-  const { user, login, hasUsers, ready } = useSession();
+  const { user, login, adopt, hasUsers, ready } = useSession();
   const nav = useNavigate();
   const toast = useToast();
   const [username, setUsername] = useState("");
@@ -47,6 +47,12 @@ export function LoginPage() {
         if (!r.ok) {
           toast(r.error ?? "Username atau PIN salah", "error");
           setPin("");
+          return;
+        }
+        // Server sudah memverifikasi — set sesi langsung tanpa hash PIN ulang.
+        if (r.userId) {
+          adopt(r.userId);
+          nav("/app/beranda", { replace: true });
           return;
         }
       }
