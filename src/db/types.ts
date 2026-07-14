@@ -8,6 +8,8 @@ export interface User {
   pinHash: string;
   pinVer?: 1 | 2; // 1 = SHA-256 lama, 2 = PBKDF2; di-upgrade otomatis saat login
   salt: string;
+  recoveryHash?: string; // hash kode pemulihan PIN (sekali pakai)
+  recoverySalt?: string;
   active: 1 | 0;
   createdAt: number;
 }
@@ -67,7 +69,7 @@ export interface Ticket {
 
 export interface Photo {
   id: string;
-  refType: "ticket" | "unit" | "unit-ktp";
+  refType: "ticket" | "unit" | "unit-ktp" | "draft";
   refId: string;
   blob: Blob;
   createdAt: number;

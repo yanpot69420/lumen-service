@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -38,6 +39,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUserId(null);
     }
   }, [ready, userId, user]);
+
+  // Kunci otomatis: 15 menit tanpa sentuhan → keluar (HP tergeletak di konter).
+  const lastActive = useRef(Date.now());
+  useEffect(() => {
+    if (!user) return;
+    const IDLE_MS = 15 * 60_000;
+    const bump = () => {
+      lastActive.current = Date.now();
+    };
+    bump();
+    const events = ["pointerdown", "keydown", "touchstart"] as const;
+    events.forEach((e) => window.addEventListener(e, bump, { passive: true }));
+    const iv = setInterval(() => {
+      if (Date.now() - lastActive.current > IDLE_MS) {
+        localStorage.removeItem(SESSION_KEY);
+        setUserId(null);
+      }
+    }, 30_000);
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, bump));
+      clearInterval(iv);
+    };
+  }, [user?.id]);
 
   async function login(username: string, pin: string): Promise<boolean> {
     const u = await db.users

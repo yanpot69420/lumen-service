@@ -49,3 +49,11 @@ export function newSalt(): string {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+/** Kode pemulihan PIN: 12 karakter tanpa huruf ambigu (0/O, 1/I/L). */
+export function newRecoveryCode(): string {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]);
+  return `${chars.slice(0, 4).join("")}-${chars.slice(4, 8).join("")}-${chars.slice(8).join("")}`;
+}

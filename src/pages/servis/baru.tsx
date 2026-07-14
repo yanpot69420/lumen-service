@@ -1,44 +1,96 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
+import { db } from "@/db/db";
 import { useUser } from "@/auth/session";
 import { createTicket } from "@/db/tickets";
+import { getSetting, setSetting } from "@/db/settings";
 import type { CashMethod } from "@/db/types";
 import { MethodPicker } from "@/components/method-picker";
 import { PageBody, PageHeader } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { Field, Input, RpInput, Textarea } from "@/components/ui/field";
-import { PendingPhotos } from "@/components/photos";
+import { PhotoManager } from "@/components/photos";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 
 const KELENGKAPAN = ["Charger", "Kartu SIM", "Memory Card", "Casing", "SIM Tray"];
+const DRAFT_KEY = "draftServisBaru";
+const DRAFT_PHOTO_REF = { refType: "draft" as const, refId: "servis-baru" };
+
+const EMPTY = {
+  customerName: "",
+  phone: "",
+  brand: "",
+  model: "",
+  keluhan: "",
+  estimasi: 0,
+  dp: 0,
+};
 
 export function ServisBaruPage() {
   const user = useUser();
   const nav = useNavigate();
   const toast = useToast();
-  const [f, setF] = useState({
-    customerName: "",
-    phone: "",
-    brand: "",
-    model: "",
-    keluhan: "",
-    estimasi: 0,
-    dp: 0,
-  });
+  const [f, setF] = useState(EMPTY);
   const [kelengkapan, setKelengkapan] = useState<string[]>([]);
-  const [photos, setPhotos] = useState<Blob[]>([]);
   const [dpMethod, setDpMethod] = useState<CashMethod>("tunai");
+  const [loaded, setLoaded] = useState(false);
+  const [restored, setRestored] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Pulihkan draft — kasir sering terpotong pelanggan lain / refresh tak sengaja.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await getSetting(DRAFT_KEY);
+        if (raw) {
+          const d = JSON.parse(raw);
+          setF({ ...EMPTY, ...d.f });
+          setKelengkapan(d.kelengkapan ?? []);
+          setDpMethod(d.dpMethod ?? "tunai");
+          setRestored(true);
+        }
+      } catch {
+        /* draft korup — abaikan */
+      }
+      setLoaded(true);
+    })();
+  }, []);
+
+  // Simpan draft otomatis (debounce 400ms).
+  useEffect(() => {
+    if (!loaded || busy) return;
+    const t = setTimeout(() => {
+      const kosong =
+        !f.customerName && !f.phone && !f.brand && !f.model && !f.keluhan &&
+        !f.estimasi && !f.dp && kelengkapan.length === 0;
+      setSetting(DRAFT_KEY, kosong ? "" : JSON.stringify({ f, kelengkapan, dpMethod }));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [f, kelengkapan, dpMethod, loaded, busy]);
+
   const valid = f.customerName.trim() && f.brand.trim() && f.keluhan.trim();
+
+  async function clearDraft() {
+    setF(EMPTY);
+    setKelengkapan([]);
+    setDpMethod("tunai");
+    setRestored(false);
+    await setSetting(DRAFT_KEY, "");
+    await db.photos.where(DRAFT_PHOTO_REF).delete();
+  }
 
   async function submit() {
     if (!valid || busy) return;
     setBusy(true);
     try {
-      const t = await createTicket(user, { ...f, kelengkapan }, photos, dpMethod);
+      const t = await createTicket(user, { ...f, kelengkapan }, [], dpMethod);
+      // Foto draft resmi jadi milik nota ini.
+      await db.photos
+        .where(DRAFT_PHOTO_REF)
+        .modify({ refType: "ticket", refId: t.id });
+      await setSetting(DRAFT_KEY, "");
       toast(`Nota ${t.noNota} dibuat`);
       nav(`/app/servis/${t.id}`, { replace: true });
     } catch (e) {
@@ -49,6 +101,8 @@ export function ServisBaruPage() {
 
   const set = (k: keyof typeof f) => (v: string | number) =>
     setF((s) => ({ ...s, [k]: v }));
+
+  if (!loaded) return null;
 
   return (
     <>
@@ -61,6 +115,17 @@ export function ServisBaruPage() {
         }
       />
       <PageBody>
+        {restored && (
+          <div className="flex items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+            Draft terakhir dipulihkan — lanjutkan atau
+            <button
+              onClick={clearDraft}
+              className="inline-flex items-center gap-1 font-semibold underline"
+            >
+              <Trash2 className="size-3.5" /> buang draft
+            </button>
+          </div>
+        )}
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nama pelanggan" required>
@@ -138,9 +203,13 @@ export function ServisBaruPage() {
           )}
           <Field
             label="Foto kondisi HP saat diterima"
-            hint="Bukti kondisi awal — melindungi dari sengketa."
+            hint="Bukti kondisi awal — melindungi dari sengketa. Foto ikut tersimpan di draft."
           >
-            <PendingPhotos blobs={photos} onChange={setPhotos} />
+            <PhotoManager
+              refType={DRAFT_PHOTO_REF.refType}
+              refId={DRAFT_PHOTO_REF.refId}
+              canDelete
+            />
           </Field>
         </div>
         <Button size="lg" className="w-full" disabled={!valid || busy} onClick={submit}>

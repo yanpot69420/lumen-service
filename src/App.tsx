@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { SessionProvider, RequireAuth, RequireOwner } from "@/auth/session";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { ToastProvider } from "@/components/ui/toast";
 import { AppShell } from "@/components/layout/app-shell";
 import { LandingPage } from "@/pages/public/landing";
@@ -24,7 +25,8 @@ import { MenuPage } from "@/pages/menu";
 
 export default function App() {
   return (
-    <ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
       <SessionProvider>
         <BrowserRouter>
           <Routes>
@@ -83,6 +85,7 @@ export default function App() {
           </Routes>
         </BrowserRouter>
       </SessionProvider>
-    </ToastProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }

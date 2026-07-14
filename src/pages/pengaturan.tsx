@@ -5,7 +5,7 @@ import { db, uid } from "@/db/db";
 import type { Role, TicketStatus, User } from "@/db/types";
 import { TICKET_STATUSES } from "@/db/types";
 import { getSetting, getWaTemplates, setSetting } from "@/db/settings";
-import { hashPin, newSalt } from "@/auth/pin";
+import { hashPin, newSalt, newRecoveryCode } from "@/auth/pin";
 import { usernameSlug, USERNAME_RE } from "@/lib/username";
 import {
   encryptBackup,
@@ -34,6 +34,7 @@ export function PengaturanPage() {
       <PageBody>
         <StoreSection />
         {isOwner && <UsersSection />}
+        {isOwner && <RecoverySection />}
         <WaSection />
         {canSeeMoney(user.role) && <BackupSection />}
         <p className="pb-4 text-center text-xs text-slate-300">
@@ -320,6 +321,77 @@ function UsersSection() {
       >
         Pengguna tidak bisa login lagi, tapi riwayat aktivitasnya tetap tersimpan.
       </ConfirmDialog>
+    </Card>
+  );
+}
+
+function RecoverySection() {
+  const user = useUser();
+  const toast = useToast();
+  const [code, setCode] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const hasCode = useLiveQuery(
+    async () => !!(await db.users.get(user.id))?.recoveryHash,
+    [user.id],
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Kode Pemulihan PIN</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-slate-400">
+          Satu-satunya jalan masuk bila Anda lupa PIN Owner. Kode hangus setelah
+          dipakai — buat baru di sini. Status:{" "}
+          <b>{hasCode ? "kode aktif tersimpan" : "TIDAK ADA kode aktif"}</b>.
+        </p>
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const c = newRecoveryCode();
+              const salt = newSalt();
+              await db.users.update(user.id, {
+                recoveryHash: await hashPin(c, salt),
+                recoverySalt: salt,
+              });
+              await logAudit(
+                user, "kode-pemulihan", "pengguna", user.id,
+                "Kode pemulihan PIN dibuat ulang",
+              );
+              setCode(c);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <KeyRound /> {hasCode ? "Ganti Kode Pemulihan" : "Buat Kode Pemulihan"}
+        </Button>
+      </CardContent>
+      <Sheet open={!!code} onClose={() => setCode(null)} title="Catat Kode Ini">
+        <div className="space-y-4 text-center">
+          <p className="text-sm text-slate-500">
+            Kode hanya ditampilkan SEKALI. Simpan di tempat aman di luar HP ini
+            (dompet, buku catatan di rumah).
+          </p>
+          <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-white py-5 font-mono text-2xl font-bold tracking-wider">
+            {code}
+          </p>
+          <Button
+            size="lg"
+            className="w-full"
+            onClick={() => {
+              setCode(null);
+              toast("Kode pemulihan aktif");
+            }}
+          >
+            Sudah Saya Catat
+          </Button>
+        </div>
+      </Sheet>
     </Card>
   );
 }

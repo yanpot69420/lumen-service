@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, uid } from "@/db/db";
-import { hashPin, newSalt } from "@/auth/pin";
+import type { User } from "@/db/types";
+import { hashPin, newSalt, newRecoveryCode } from "@/auth/pin";
 import { setSetting } from "@/db/settings";
 import { usernameSlug, USERNAME_RE } from "@/lib/username";
 import { Button } from "@/components/ui/button";
@@ -23,10 +24,36 @@ export function SetupPage() {
   const [opsUsername, setOpsUsername] = useState("");
   const [opsUserTouched, setOpsUserTouched] = useState(false);
   const [opsPin, setOpsPin] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (userCount === undefined) return null;
-  if (userCount > 0 && !busy) return <Navigate to="/app/login" replace />;
+  if (userCount > 0 && !busy && !recoveryCode)
+    return <Navigate to="/app/login" replace />;
+
+  // Layar terakhir: kode pemulihan PIN owner — tampil sekali saja.
+  if (recoveryCode) {
+    return (
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-5 p-6 text-center">
+        <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-emerald-100 text-2xl">
+          🔑
+        </div>
+        <div>
+          <h1 className="text-xl font-bold">Simpan Kode Pemulihan PIN</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Satu-satunya cara masuk bila Owner lupa PIN. Catat di tempat aman di
+            luar HP ini — kode hanya ditampilkan SEKALI.
+          </p>
+        </div>
+        <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-white py-5 font-mono text-2xl font-bold tracking-wider">
+          {recoveryCode}
+        </p>
+        <Button size="lg" onClick={() => nav("/app/login", { replace: true })}>
+          Sudah Saya Catat — Lanjut Login
+        </Button>
+      </div>
+    );
+  }
 
   const valid =
     storeName.trim() &&
@@ -48,7 +75,7 @@ export function SetupPage() {
         username: string,
         role: "owner" | "headops",
         pin: string,
-      ) => {
+      ): Promise<User> => {
         const salt = newSalt();
         return {
           id: uid(),
@@ -64,6 +91,10 @@ export function SetupPage() {
       };
       const owner = await mkUser(ownerName, ownerUsername, "owner", ownerPin);
       const ops = await mkUser(opsName, opsUsername, "headops", opsPin);
+      const code = newRecoveryCode();
+      const recoverySalt = newSalt();
+      owner.recoveryHash = await hashPin(code, recoverySalt);
+      owner.recoverySalt = recoverySalt;
       await db.users.bulkAdd([owner, ops]);
       await setSetting("storeName", storeName.trim());
       await setSetting("storePhone", storePhone.trim());
@@ -77,8 +108,8 @@ export function SetupPage() {
         entityId: "-",
         summary: `Setup awal: toko "${storeName.trim()}", 2 pengguna dibuat`,
       });
-      toast("Setup selesai. Silakan login.");
-      nav("/app/login", { replace: true });
+      toast("Setup selesai");
+      setRecoveryCode(code);
     } finally {
       setBusy(false);
     }

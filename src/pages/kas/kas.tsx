@@ -422,6 +422,15 @@ function KoreksiSheet({
           onClick={async () => {
             setBusy(true);
             try {
+              const pendingSame = await db.corrections
+                .where("status")
+                .equals("pending")
+                .and((k) => k.entityId === entry.id)
+                .count();
+              if (pendingSame > 0) {
+                toast("Transaksi ini sudah punya koreksi yang menunggu persetujuan", "error");
+                return;
+              }
               const after = voidIt
                 ? { amount: entry.amount, note: entry.note, voided: 1 as const }
                 : { amount, note: note.trim(), voided: 0 as const };

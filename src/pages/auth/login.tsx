@@ -1,9 +1,20 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useSession } from "@/auth/session";
+import { db } from "@/db/db";
+import { hashPin, newSalt } from "@/auth/pin";
+import { logAudit } from "@/db/audit";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
+import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
+
+/** Terima input kode dengan/tanpa strip, huruf kecil, spasi. */
+function normalizeRecoveryCode(raw: string): string {
+  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+  const parts = [clean.slice(0, 4), clean.slice(4, 8), clean.slice(8, 12)];
+  return parts.filter(Boolean).join("-");
+}
 
 export function LoginPage() {
   const { user, login, hasUsers, ready } = useSession();
@@ -12,6 +23,10 @@ export function LoginPage() {
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
+  const [recoverOpen, setRecoverOpen] = useState(false);
+  const [rUser, setRUser] = useState("");
+  const [rCode, setRCode] = useState("");
+  const [rPin, setRPin] = useState("");
 
   if (user) return <Navigate to="/app/beranda" replace />;
   if (ready && !hasUsers) return <Navigate to="/app/setup" replace />;
@@ -71,7 +86,98 @@ export function LoginPage() {
         <Button size="lg" className="w-full" disabled={!valid || busy} onClick={submit}>
           Masuk
         </Button>
+        <button
+          onClick={() => {
+            setRUser(username);
+            setRCode("");
+            setRPin("");
+            setRecoverOpen(true);
+          }}
+          className="w-full text-center text-xs font-medium text-slate-400 underline hover:text-brand-600"
+        >
+          Lupa PIN? Pakai kode pemulihan
+        </button>
       </div>
+
+      <Sheet
+        open={recoverOpen}
+        onClose={() => setRecoverOpen(false)}
+        title="Pemulihan PIN"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Masukkan kode pemulihan yang dicatat saat setup (atau yang dibuat di
+            Pengaturan). Kode hangus setelah dipakai.
+          </p>
+          <Field label="Username" required>
+            <Input
+              autoCapitalize="none"
+              value={rUser}
+              onChange={(e) =>
+                setRUser(e.target.value.toLowerCase().replace(/\s/g, ""))
+              }
+            />
+          </Field>
+          <Field label="Kode pemulihan" required>
+            <Input
+              autoCapitalize="characters"
+              placeholder="XXXX-XXXX-XXXX"
+              className="font-mono uppercase"
+              value={rCode}
+              onChange={(e) => setRCode(normalizeRecoveryCode(e.target.value))}
+            />
+          </Field>
+          <Field label="PIN baru (4–6 digit)" required>
+            <Input
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={rPin}
+              onChange={(e) => setRPin(e.target.value.replace(/\D/g, ""))}
+            />
+          </Field>
+          <Button
+            size="lg"
+            className="w-full"
+            disabled={
+              busy || rUser.length < 3 || rCode.length < 14 || !/^\d{4,6}$/.test(rPin)
+            }
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const u = await db.users.where("username").equals(rUser).first();
+                if (!u || !u.active || !u.recoveryHash || !u.recoverySalt) {
+                  toast("Username atau kode pemulihan salah", "error");
+                  return;
+                }
+                const hash = await hashPin(rCode, u.recoverySalt);
+                if (hash !== u.recoveryHash) {
+                  toast("Username atau kode pemulihan salah", "error");
+                  return;
+                }
+                const salt = newSalt();
+                await db.users.update(u.id, {
+                  salt,
+                  pinHash: await hashPin(rPin, salt),
+                  pinVer: 2,
+                  recoveryHash: undefined,
+                  recoverySalt: undefined,
+                });
+                await logAudit(
+                  u, "pulihkan-pin", "pengguna", u.id,
+                  `PIN ${u.name} direset via kode pemulihan (kode hangus)`,
+                );
+                toast("PIN baru tersimpan. Buat kode pemulihan baru di Pengaturan.");
+                setRecoverOpen(false);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Reset PIN
+          </Button>
+        </div>
+      </Sheet>
     </div>
   );
 }
