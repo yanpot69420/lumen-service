@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useSession } from "@/auth/session";
 import { db } from "@/db/db";
 import { hashPin, newSalt } from "@/auth/pin";
@@ -113,14 +113,6 @@ export function LoginPage() {
         >
           Lupa PIN? Pakai kode pemulihan
         </button>
-        {isCloud && !hasUsers && (
-          <Link
-            to="/app/setup"
-            className="block w-full text-center text-xs font-medium text-brand-600 underline"
-          >
-            Perangkat/toko pertama kali? Setup di sini
-          </Link>
-        )}
       </div>
 
       <Sheet

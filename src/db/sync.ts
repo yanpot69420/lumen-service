@@ -420,6 +420,41 @@ export async function pullCore(): Promise<void> {
   await pullTables(["users", "settings"]);
 }
 
+/** Kosongkan seluruh cache lokal + antrean (dipakai saat cloud fresh/di-reset). */
+export async function resetLocalCache(): Promise<void> {
+  await db.transaction(
+    "rw",
+    [
+      db.users,
+      db.settings,
+      db.tickets,
+      db.units,
+      db.parts,
+      db.cash,
+      db.dayCloses,
+      db.corrections,
+      db.audit,
+      db.photos,
+      db.outbox,
+    ],
+    async () => {
+      await Promise.all([
+        db.users.clear(),
+        db.settings.clear(),
+        db.tickets.clear(),
+        db.units.clear(),
+        db.parts.clear(),
+        db.cash.clear(),
+        db.dayCloses.clear(),
+        db.corrections.clear(),
+        db.audit.clear(),
+        db.photos.clear(),
+        db.outbox.clear(),
+      ]);
+    },
+  );
+}
+
 // ---- Status ----
 export type SyncState = "off" | "idle" | "syncing" | "error" | "offline";
 interface Status {

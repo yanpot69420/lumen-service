@@ -8,6 +8,7 @@ import { KatalogPage } from "@/pages/public/katalog";
 import { CekStatusPage } from "@/pages/public/cek-status";
 import { SetupPage } from "@/pages/auth/setup";
 import { LoginPage } from "@/pages/auth/login";
+import { CloudBoot } from "@/pages/auth/cloud-boot";
 import { BerandaPage } from "@/pages/beranda";
 import { ServisListPage } from "@/pages/servis/list";
 import { ServisBaruPage } from "@/pages/servis/baru";
@@ -35,6 +36,8 @@ export default function App() {
             <Route path="/katalog" element={<KatalogPage />} />
             <Route path="/cek" element={<CekStatusPage />} />
 
+            {/* Semua rute internal lewat gerbang boot cloud (cek status toko). */}
+            <Route element={<CloudBoot />}>
             {/* Auth */}
             <Route path="/app/setup" element={<SetupPage />} />
             <Route path="/app/login" element={<LoginPage />} />
@@ -80,6 +83,7 @@ export default function App() {
                 </RequireAuth>
               }
             />
+            </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

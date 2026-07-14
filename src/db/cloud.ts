@@ -33,6 +33,21 @@ async function adoptSession(tokenHash: string): Promise<boolean> {
   return !error;
 }
 
+export async function cloudSignOut(): Promise<void> {
+  await supabase?.auth.signOut();
+}
+
+/** Apakah toko sudah di-setup di cloud (ada user)? Dipakai untuk memutuskan
+ *  tampilkan Setup atau Login, tanpa bergantung pada cache lokal. */
+export async function cloudStatus(): Promise<{
+  ok: boolean;
+  hasUsers: boolean;
+}> {
+  const res = await invokeAuth("status", {});
+  if (!res?.ok) return { ok: false, hasUsers: false };
+  return { ok: true, hasUsers: !!res.hasUsers };
+}
+
 export interface CloudSetupInput {
   store: { name: string; phone: string };
   owner: { name: string; username: string; pin: string };

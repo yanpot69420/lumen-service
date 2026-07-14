@@ -100,6 +100,14 @@ Deno.serve(async (req) => {
   const action = body.action;
 
   try {
+    if (action === "status") {
+      // Apakah toko sudah di-setup (ada user)? Aman diekspos — hanya boolean.
+      const { count } = await admin
+        .from("users")
+        .select("id", { count: "exact", head: true });
+      return json({ ok: true, hasUsers: (count ?? 0) > 0 });
+    }
+
     if (action === "setup") {
       const { count } = await admin
         .from("users")
