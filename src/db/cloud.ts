@@ -1,60 +1,64 @@
-import { useEffect, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
-import { supabase, isCloud } from "./supabase";
+import { supabase } from "./supabase";
+import { pullCore } from "./sync";
 
-/**
- * Koneksi ke akun cloud toko (Supabase Auth). Satu akun dipakai bersama semua
- * perangkat toko; sesi disimpan otomatis oleh Supabase (localStorage), jadi
- * perangkat tetap terhubung setelah connect sekali.
- *
- * Catatan keamanan: sign-up publik DIMATIKAN di project. Akun cloud toko dibuat
- * owner lewat dashboard Supabase; di sini hanya sign-in.
- */
-export async function connectCloud(
-  email: string,
-  password: string,
-): Promise<{ ok: boolean; error?: string }> {
-  if (!supabase) return { ok: false, error: "Cloud belum dikonfigurasi" };
-  const { error } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password,
+export { isCloud } from "./supabase";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+async function invokeAuth(action: string, payload: object): Promise<any> {
+  if (!supabase) return { ok: false, error: "Cloud nonaktif" };
+  const { data, error } = await supabase.functions.invoke("auth", {
+    body: { action, ...payload },
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    const ctx = (error as any).context;
+    if (ctx?.json) {
+      try {
+        return await ctx.json();
+      } catch {
+        /* abaikan */
+      }
+    }
+    return { ok: false, error: error.message };
+  }
+  return data;
+}
+
+/** Tukar token_hash dari Edge Function menjadi sesi Supabase di perangkat ini. */
+async function adoptSession(tokenHash: string): Promise<boolean> {
+  if (!supabase) return false;
+  const { error } = await supabase.auth.verifyOtp({
+    type: "magiclink",
+    token_hash: tokenHash,
+  });
+  return !error;
+}
+
+export interface CloudSetupInput {
+  store: { name: string; phone: string };
+  owner: { name: string; username: string; pin: string };
+  headops: { name: string; username: string; pin: string };
+}
+
+export async function cloudSetup(
+  input: CloudSetupInput,
+): Promise<{ ok: boolean; recoveryCode?: string; error?: string }> {
+  const res = await invokeAuth("setup", input);
+  if (!res?.ok) return { ok: false, error: res?.error ?? "Setup cloud gagal" };
+  if (!(await adoptSession(res.tokenHash)))
+    return { ok: false, error: "Gagal membuat sesi" };
+  await pullCore();
+  return { ok: true, recoveryCode: res.recoveryCode };
+}
+
+/** Verifikasi PIN di server & buat sesi cloud; users ikut tersinkron ke lokal. */
+export async function cloudLogin(
+  username: string,
+  pin: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await invokeAuth("login", { username, pin });
+  if (!res?.ok) return { ok: false, error: res?.error };
+  if (!(await adoptSession(res.tokenHash)))
+    return { ok: false, error: "Gagal membuat sesi" };
+  await pullCore();
   return { ok: true };
-}
-
-export async function disconnectCloud(): Promise<void> {
-  await supabase?.auth.signOut();
-}
-
-export interface CloudStatus {
-  configured: boolean; // env terisi
-  session: Session | null;
-  email: string | null;
-  ready: boolean;
-}
-
-/** Status koneksi cloud, reaktif terhadap sign-in/sign-out. */
-export function useCloudStatus(): CloudStatus {
-  const [session, setSession] = useState<Session | null>(null);
-  const [ready, setReady] = useState(!isCloud);
-
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  return {
-    configured: isCloud,
-    session,
-    email: session?.user?.email ?? null,
-    ready,
-  };
 }

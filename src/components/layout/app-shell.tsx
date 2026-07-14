@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -12,11 +13,42 @@ import {
   Settings,
   Globe,
   LogOut,
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  Check,
 } from "lucide-react";
 import { useSession, useUser } from "@/auth/session";
 import { canSeeMoney } from "@/auth/roles";
 import { db } from "@/db/db";
+import { isCloud } from "@/db/supabase";
+import { startSync, stopSync, useSyncStatus } from "@/db/sync";
 import { cn } from "@/lib/cn";
+
+export function SyncPill() {
+  const s = useSyncStatus();
+  if (!isCloud) return null;
+  const map = {
+    off: { icon: Cloud, text: "Cloud siap", cls: "text-slate-400" },
+    idle: { icon: Check, text: "Tersinkron", cls: "text-emerald-400" },
+    syncing: { icon: RefreshCw, text: "Menyinkron…", cls: "text-sky-400" },
+    error: { icon: CloudOff, text: "Gagal sinkron", cls: "text-amber-400" },
+    offline: { icon: CloudOff, text: "Offline", cls: "text-slate-400" },
+  } as const;
+  const m = map[s.state];
+  const Icon = m.icon;
+  return (
+    <div className="flex items-center gap-1.5 px-2 text-[11px] font-medium text-slate-400">
+      <Icon className={cn("size-3.5", m.cls, s.state === "syncing" && "animate-spin")} />
+      <span className={m.cls}>{m.text}</span>
+      {s.pending > 0 && (
+        <span className="ml-auto rounded-full bg-white/10 px-1.5 text-[10px]">
+          {s.pending} antre
+        </span>
+      )}
+    </div>
+  );
+}
 
 const mainNav = [
   { to: "/app/beranda", label: "Beranda", icon: LayoutDashboard },
@@ -47,6 +79,12 @@ export function AppShell() {
     () => db.corrections.where("status").equals("pending").count(),
     [],
   );
+
+  // Jalankan mesin sinkronisasi cloud selama sesi berlangsung.
+  useEffect(() => {
+    startSync();
+    return () => stopSync();
+  }, []);
 
   const navItem = (
     to: string,
@@ -108,7 +146,10 @@ export function AppShell() {
             )}
           {navItem("/", "Web Publik", Globe)}
         </nav>
-        <div className="mt-4 flex items-center gap-2 rounded-xl bg-white/5 p-3">
+        <div className="mb-2">
+          <SyncPill />
+        </div>
+        <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/5 p-3">
           <div className="flex size-8 items-center justify-center rounded-full bg-brand-700 text-xs font-bold text-white">
             {user.name.slice(0, 1).toUpperCase()}
           </div>

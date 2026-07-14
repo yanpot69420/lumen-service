@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useSession } from "@/auth/session";
 import { db } from "@/db/db";
 import { hashPin, newSalt } from "@/auth/pin";
 import { logAudit } from "@/db/audit";
+import { cloudLogin, isCloud } from "@/db/cloud";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
@@ -29,20 +30,35 @@ export function LoginPage() {
   const [rPin, setRPin] = useState("");
 
   if (user) return <Navigate to="/app/beranda" replace />;
-  if (ready && !hasUsers) return <Navigate to="/app/setup" replace />;
+  // Mode lokal: tanpa user → ke setup. Mode cloud: cache lokal bisa kosong di
+  // perangkat baru meski cloud sudah ada isinya, jadi jangan auto-redirect.
+  if (ready && !hasUsers && !isCloud)
+    return <Navigate to="/app/setup" replace />;
 
   const valid = username.trim().length >= 3 && pin.length >= 4;
 
   async function submit() {
     if (!valid || busy) return;
     setBusy(true);
-    const ok = await login(username, pin);
-    setBusy(false);
-    if (ok) {
-      nav("/app/beranda", { replace: true });
-    } else {
-      toast("Username atau PIN salah", "error");
-      setPin("");
+    try {
+      if (isCloud) {
+        // Verifikasi PIN di server → sesi cloud + tarik users ke cache lokal.
+        const r = await cloudLogin(username, pin);
+        if (!r.ok) {
+          toast(r.error ?? "Username atau PIN salah", "error");
+          setPin("");
+          return;
+        }
+      }
+      const ok = await login(username, pin);
+      if (ok) {
+        nav("/app/beranda", { replace: true });
+      } else {
+        toast("Username atau PIN salah", "error");
+        setPin("");
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -97,6 +113,14 @@ export function LoginPage() {
         >
           Lupa PIN? Pakai kode pemulihan
         </button>
+        {isCloud && !hasUsers && (
+          <Link
+            to="/app/setup"
+            className="block w-full text-center text-xs font-medium text-brand-600 underline"
+          >
+            Perangkat/toko pertama kali? Setup di sini
+          </Link>
+        )}
       </div>
 
       <Sheet

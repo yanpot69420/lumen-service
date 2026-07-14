@@ -5,6 +5,7 @@ import { db, uid } from "@/db/db";
 import type { User } from "@/db/types";
 import { hashPin, newSalt, newRecoveryCode } from "@/auth/pin";
 import { setSetting } from "@/db/settings";
+import { cloudSetup, isCloud } from "@/db/cloud";
 import { usernameSlug, USERNAME_RE } from "@/lib/username";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
@@ -69,6 +70,23 @@ export function SetupPage() {
     if (!valid || busy) return;
     setBusy(true);
     try {
+      // Mode cloud: server (Edge Function) yang membuat user + kode pemulihan,
+      // lalu data ditarik ke cache lokal. PIN tak pernah dikirim polos ke DB.
+      if (isCloud) {
+        const r = await cloudSetup({
+          store: { name: storeName.trim(), phone: storePhone.trim() },
+          owner: { name: ownerName.trim(), username: ownerUsername, pin: ownerPin },
+          headops: { name: opsName.trim(), username: opsUsername, pin: opsPin },
+        });
+        if (!r.ok) {
+          toast(r.error ?? "Setup gagal", "error");
+          return;
+        }
+        toast("Setup selesai");
+        setRecoveryCode(r.recoveryCode ?? "—");
+        return;
+      }
+
       const now = Date.now();
       const mkUser = async (
         name: string,
