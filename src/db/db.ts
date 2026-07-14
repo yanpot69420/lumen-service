@@ -13,6 +13,14 @@ import type {
   User,
 } from "./types";
 
+/** Antrean perubahan lokal yang belum terdorong ke cloud (buffer offline). */
+export interface OutboxEntry {
+  seq?: number;
+  table: string; // nama tabel Dexie
+  key: string; // primary key baris
+  at: number;
+}
+
 export class LumenDB extends Dexie {
   users!: Table<User, string>;
   settings!: Table<Setting, string>;
@@ -24,6 +32,7 @@ export class LumenDB extends Dexie {
   dayCloses!: Table<DayClose, string>;
   corrections!: Table<Correction, string>;
   audit!: Table<AuditEntry, string>;
+  outbox!: Table<OutboxEntry, number>;
 
   constructor() {
     super("lumen-service");
@@ -54,6 +63,8 @@ export class LumenDB extends Dexie {
           await tx.table("users").update(u.id, { username: uname });
         }
       });
+    // v3: antrean sinkronisasi cloud.
+    this.version(3).stores({ outbox: "++seq, table" });
   }
 }
 
