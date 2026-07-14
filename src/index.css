@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #f0f6ff;
+  --color-brand-100: #dcebfe;
+  --color-brand-200: #c0dcfd;
+  --color-brand-300: #94c5fb;
+  --color-brand-400: #61a5f7;
+  --color-brand-500: #3c83f2;
+  --color-brand-600: #2664e6;
+  --color-brand-700: #1e4fd3;
+  --color-brand-800: #1f41ab;
+  --color-brand-900: #1e3a87;
+  --color-brand-950: #0b1220;
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Nota thermal 58mm */
+@media print {
+  body {
+    background: white;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .nota-print {
+    width: 58mm !important;
+    max-width: 58mm !important;
+    margin: 0 !important;
+    padding: 2mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+  @page {
+    size: 58mm auto;
+    margin: 0;
+  }
+}
