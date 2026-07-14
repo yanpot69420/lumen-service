@@ -1,21 +1,30 @@
 -- Lumen Service — skema PostgreSQL untuk Supabase
--- ===============================================
--- Aplikasi saat ini berjalan local-first (IndexedDB di perangkat).
--- Jalankan skema ini di Supabase SQL Editor saat siap pindah ke
--- multi-perangkat (HP + PC konter berbagi data + owner pantau jarak jauh).
+-- =================================================
+-- Arsitektur: ONLINE + ANTREAN OFFLINE.
+--   Supabase = sumber kebenaran. Aplikasi menyimpan cache + antrean tulis di
+--   IndexedDB (Dexie) lokal, lalu mendorongnya ke sini saat online.
 --
--- Langkah singkat:
---   1. Buat project di https://supabase.com (dibuat oleh owner sendiri).
---   2. SQL Editor → jalankan seluruh file ini.
---   3. Salin Project URL + anon key ke file .env aplikasi.
---   4. Minta pengembang mengaktifkan lapisan sinkronisasi.
+-- Cara pakai (JANGAN dijalankan dulu — tunggu instruksi final saat auth
+-- disambungkan, agar tidak menjalankan skema yang masih berubah):
+--   Supabase Dashboard → SQL Editor → tempel seluruh file ini → Run.
+--
+-- Catatan foto: blob TIDAK disimpan di database. Foto diunggah ke Supabase
+-- Storage (bucket privat "photos"); tabel photos hanya menyimpan path-nya.
+
+-- ============================================================
+-- 1. TABEL
+-- ============================================================
 
 create table users (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  username text unique not null,
   role text not null check (role in ('owner','headops','kasir','teknisi')),
   pin_hash text not null,
+  pin_ver int not null default 2,
   salt text not null,
+  recovery_hash text,
+  recovery_salt text,
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
@@ -28,6 +37,8 @@ create table settings (
 create table tickets (
   id uuid primary key default gen_random_uuid(),
   no_nota text unique not null,
+  garansi_dari uuid references tickets(id),
+  piutang bigint not null default 0,
   customer_name text not null,
   phone text not null default '',
   brand text not null,
@@ -47,6 +58,7 @@ create table tickets (
 );
 create index tickets_status_idx on tickets(status);
 create index tickets_created_idx on tickets(created_at desc);
+create index tickets_phone_idx on tickets(phone);
 
 create table units (
   id uuid primary key default gen_random_uuid(),
@@ -71,6 +83,7 @@ create table units (
 );
 create index units_imei_idx on units(imei);
 create index units_status_idx on units(status);
+create index units_bought_idx on units(bought_at desc);
 
 create table parts (
   id uuid primary key default gen_random_uuid(),
@@ -88,16 +101,19 @@ create table cash_entries (
   day_key date not null,
   type text not null check (type in ('in','out')),
   category text not null,
+  method text not null default 'tunai' check (method in ('tunai','qris','transfer')),
   amount bigint not null,
   note text not null default '',
   ref_type text,
   ref_id uuid,
   meta jsonb,
   by_user uuid not null references users(id),
+  by_name text not null,
   locked boolean not null default false,
   voided boolean not null default false
 );
 create index cash_day_idx on cash_entries(day_key);
+create index cash_at_idx on cash_entries(at desc);
 
 create table day_closes (
   day_key date primary key,
@@ -106,6 +122,7 @@ create table day_closes (
   selisih bigint not null,
   note text not null default '',
   closed_by uuid not null references users(id),
+  closed_by_name text not null,
   closed_at timestamptz not null default now()
 );
 
@@ -118,15 +135,19 @@ create table corrections (
   before_data jsonb not null,
   after_data jsonb not null,
   requested_by uuid not null references users(id),
+  requested_by_name text not null,
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   decided_by uuid references users(id),
+  decided_by_name text,
   decided_at timestamptz
 );
+create index corrections_status_idx on corrections(status);
 
 create table audit_log (
   id uuid primary key default gen_random_uuid(),
   at timestamptz not null default now(),
   user_id uuid not null references users(id),
+  user_name text not null,
   action text not null,
   entity text not null,
   entity_id text not null,
@@ -134,34 +155,65 @@ create table audit_log (
 );
 create index audit_at_idx on audit_log(at desc);
 
--- ============ Row Level Security ============
--- Prinsip: append-only untuk transaksi; UPDATE/DELETE kas hanya lewat
--- fungsi koreksi; audit_log tidak bisa diubah siapa pun.
+create table photos (
+  id uuid primary key default gen_random_uuid(),
+  ref_type text not null check (ref_type in ('ticket','unit','unit-ktp')),
+  ref_id uuid not null,
+  path text not null,          -- lokasi objek di Storage bucket "photos"
+  created_at timestamptz not null default now()
+);
+create index photos_ref_idx on photos(ref_type, ref_id);
 
-alter table tickets enable row level security;
-alter table units enable row level security;
-alter table parts enable row level security;
+-- ============================================================
+-- 2. ROW LEVEL SECURITY — TAHAP 1 (auth level-toko)
+-- ============================================================
+-- Semua perangkat toko login sebagai SATU akun cloud toko (Supabase Auth).
+-- RLS mewajibkan sesi terautentikasi → data toko tidak bisa diakses hanya
+-- dengan anon key yang publik. Yang ditegakkan server di tahap ini:
+--   • audit_log & day_closes = APPEND-ONLY (tak bisa diubah/dihapus siapa pun)
+--   • TIDAK ADA policy DELETE di mana pun = tak ada data yang bisa dihapus permanen
+-- Aturan per-peran (kasir tak lihat modal, koreksi kas owner-only) masih dijaga
+-- aplikasi di tahap ini; dipindah ke server saat auth per-staf ditambahkan.
+
+alter table users        enable row level security;
+alter table settings     enable row level security;
+alter table tickets      enable row level security;
+alter table units        enable row level security;
+alter table parts        enable row level security;
 alter table cash_entries enable row level security;
-alter table day_closes enable row level security;
-alter table corrections enable row level security;
-alter table audit_log enable row level security;
+alter table day_closes   enable row level security;
+alter table corrections  enable row level security;
+alter table audit_log    enable row level security;
+alter table photos       enable row level security;
 
--- Contoh kebijakan (sesuaikan dengan skema auth yang dipakai saat integrasi;
--- disarankan Supabase Auth + klaim role di JWT):
--- create policy "staff bisa baca-tulis tickets" on tickets
---   for all using (auth.role() = 'authenticated');
--- create policy "audit hanya insert" on audit_log
---   for insert with check (auth.role() = 'authenticated');
--- create policy "audit bisa dibaca" on audit_log
---   for select using (auth.role() = 'authenticated');
--- (Tidak ada policy UPDATE/DELETE untuk audit_log = tidak bisa diubah.)
+-- Tabel operasional: sesi toko boleh baca/tambah/ubah (tanpa hapus).
+do $$
+declare t text;
+begin
+  foreach t in array array['users','settings','tickets','units','parts','cash_entries','corrections','photos']
+  loop
+    execute format('create policy rw_select on %I for select to authenticated using (true)', t);
+    execute format('create policy rw_insert on %I for insert to authenticated with check (true)', t);
+    execute format('create policy rw_update on %I for update to authenticated using (true)', t);
+  end loop;
+end $$;
 
--- Katalog publik: view tanpa harga modal, aman untuk anon key.
-create view public_catalog as
+-- audit_log & day_closes: hanya baca + tambah = PERMANEN (append-only).
+create policy ao_select_audit on audit_log  for select to authenticated using (true);
+create policy ao_insert_audit on audit_log  for insert to authenticated with check (true);
+create policy ao_select_close on day_closes for select to authenticated using (true);
+create policy ao_insert_close on day_closes for insert to authenticated with check (true);
+
+-- ============================================================
+-- 3. VIEW PUBLIK (untuk fitur publik — diaktifkan nanti)
+-- ============================================================
+create or replace view public_catalog as
   select kode, brand, model, varian, kondisi, harga_jual
-  from units
-  where status = 'stok' and harga_jual > 0;
+  from units where status = 'stok' and harga_jual > 0;
 
-create view public_ticket_status as
-  select no_nota, brand, model, status, estimasi, biaya_jasa, dp, history
+create or replace view public_ticket_status as
+  select no_nota, brand, model, status, estimasi, biaya_jasa, dp, piutang, history
   from tickets;
+
+-- Catatan: akses anon ke dua view ini diatur terpisah (grant select to anon)
+-- saat fitur publik diaktifkan, dengan rate limiting di sisi Edge Function.
