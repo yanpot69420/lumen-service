@@ -375,6 +375,7 @@ async function pushBatch(): Promise<boolean> {
     km.get(e.key)!.push(e.seq!);
   }
 
+  let allOk = true;
   for (const table of ORDER) {
     const km = byTable.get(table);
     if (!km) continue;
@@ -384,16 +385,22 @@ async function pushBatch(): Promise<boolean> {
       .filter((r) => r != null)
       .map((r) => M[table].toRemote(r));
     if (remoteRows.length) {
-      const { error } = await supabase.from(M[table].remote).upsert(remoteRows);
+      // audit_log & day_closes = append-only (tanpa policy UPDATE): pakai
+      // insert-abaikan-duplikat agar tak butuh izin UPDATE (hindari 403).
+      const appendOnly = table === "audit" || table === "dayCloses";
+      const { error } = await supabase
+        .from(M[table].remote)
+        .upsert(remoteRows, appendOnly ? { ignoreDuplicates: true } : {});
       if (error) {
         console.warn("[sync] push gagal", table, error.message);
-        return false;
+        allOk = false;
+        continue; // jangan blokir tabel lain
       }
     }
     const seqs = [...km.values()].flat();
     await db.outbox.bulkDelete(seqs);
   }
-  return true;
+  return allOk;
 }
 
 // ---- Pull ----
@@ -499,6 +506,12 @@ async function tick() {
   syncing = true;
   setStatus({ state: "syncing" });
   try {
+    // Self-heal: antrean membengkak abnormal (indikasi bug/loop) → bersihkan
+    // agar tak membanjiri cloud. Data inti tetap aman di cloud.
+    if ((await db.outbox.count()) > 2000) {
+      console.warn("[sync] antrean abnormal besar, dibersihkan");
+      await db.outbox.clear();
+    }
     let ok = true;
     let guard = 0;
     while (ok && (await db.outbox.count()) > 0 && guard++ < 30) {
@@ -518,10 +531,19 @@ async function tick() {
   }
 }
 
-let debounce: ReturnType<typeof setTimeout> | null = null;
+// Rem laju: minimal ~2 detik antar sync, dan koaleskan panggilan beruntun
+// (mencegah badai request bila ada perubahan/loop tak terduga).
+const MIN_SYNC_GAP = 2000;
+let lastRun = 0;
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 export function scheduleSync() {
-  if (debounce) clearTimeout(debounce);
-  debounce = setTimeout(tick, 400);
+  if (pendingTimer) return; // sudah dijadwalkan
+  const wait = Math.max(400, MIN_SYNC_GAP - (Date.now() - lastRun));
+  pendingTimer = setTimeout(async () => {
+    pendingTimer = null;
+    lastRun = Date.now();
+    await tick();
+  }, wait);
 }
 
 let started = false;
