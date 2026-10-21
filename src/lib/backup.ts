@@ -78,13 +78,8 @@ export async function decryptBackup(
   return new TextDecoder().decode(plain);
 }
 
-export function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result as string);
-    fr.onerror = () => reject(fr.error);
-    fr.readAsDataURL(blob);
-  });
+export async function blobToDataUrl(blob: Blob): Promise<string> {
+  return `data:${blob.type};base64,${toB64(await blob.arrayBuffer())}`;
 }
 
 export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {

@@ -1,6 +1,7 @@
-import { useEffect, type ReactNode } from "react";
-import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { X } from "lucide-react";
+import { useId, type ReactNode } from "react";
+import { useDialog } from "./use-dialog";
 
 /** Bottom sheet di mobile, panel kanan di desktop. */
 export function Sheet({
@@ -16,16 +17,8 @@ export function Sheet({
   children: ReactNode;
   wide?: boolean;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open, onClose]);
+  const ref = useDialog(open, onClose);
+  const titleId = useId();
 
   if (!open) return null;
   return (
@@ -37,18 +30,22 @@ export function Sheet({
       />
       <div
         role="dialog"
+        ref={ref}
+        tabIndex={-1}
+        aria-labelledby={titleId}
         aria-modal
         className={cn(
-          "absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-3xl bg-white shadow-xl",
-          "sm:inset-y-0 sm:left-auto sm:right-0 sm:max-h-none sm:rounded-none sm:rounded-l-2xl",
-          wide ? "sm:w-[560px]" : "sm:w-[420px]",
+          "absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] shadow-xl",
+          "lg:inset-y-0 lg:left-auto lg:right-0 lg:max-h-none lg:rounded-none lg:rounded-l-2xl lg:pb-0",
+          wide ? "lg:w-[560px]" : "lg:w-[420px]",
         )}
       >
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-200 lg:hidden" aria-hidden />
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 className="text-base font-semibold">{title}</h2>
+          <h2 id={titleId} className="text-base font-semibold">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="flex size-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 lg:size-8"
             aria-label="Tutup"
           >
             <X className="size-5" />

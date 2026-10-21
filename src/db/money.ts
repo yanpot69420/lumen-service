@@ -1,4 +1,5 @@
 // Fungsi murni seputar uang — tanpa Dexie/DOM agar bisa diuji dengan `bun test`.
+import { dayKey } from "@/lib/format";
 import type {
   CashEntry,
   CashMethod,
@@ -17,20 +18,25 @@ export function methodOf(e: CashEntry): CashMethod {
   return e.method ?? "tunai";
 }
 
+export function ticketJasa(t: Ticket): number {
+  return (t.hargaFinal ?? t.biayaJasa > 0) ? t.biayaJasa : t.estimasi;
+}
 export function ticketTotal(t: Ticket): number {
-  const jasa = t.biayaJasa || t.estimasi;
+  const jasa = ticketJasa(t);
   const parts = t.partsUsed.reduce((s, p) => s + p.harga * p.qty, 0);
   return jasa + parts;
 }
 
 export function ticketSisa(t: Ticket): number {
+  if (t.status === "batal") return 0;
+  if (t.status === "diambil") return Math.max(0, t.piutang ?? 0);
   return Math.max(0, ticketTotal(t) - t.dp);
 }
 
 export function sumCash(
   entries: CashEntry[],
   method?: CashMethod,
-): { masuk: number; keluar: number; net: number } {
+): { masuk: number; keluar: number; net: number; } {
   let masuk = 0;
   let keluar = 0;
   for (const e of entries) {
@@ -55,7 +61,7 @@ export interface MonthlyReport {
   laba: number;
   garansiCount: number;
   piutangTotal: number; // outstanding saat ini (bukan per bulan)
-  perMethod: Record<CashMethod, { masuk: number; keluar: number }>;
+  perMethod: Record<CashMethod, { masuk: number; keluar: number; }>;
 }
 
 function diambilAt(t: Ticket): number | undefined {
@@ -66,9 +72,7 @@ function diambilAt(t: Ticket): number | undefined {
 }
 
 function inMonth(at: number, month: string): boolean {
-  const d = new Date(at);
-  const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  return mk === month;
+  return dayKey(new Date(at)).slice(0, 7) === month;
 }
 
 /**
@@ -84,8 +88,8 @@ export function computeMonthlyReport(
   const valid = cash.filter((e) => !e.voided && e.dayKey.startsWith(month));
 
   const servisIn = valid
-    .filter((e) => e.type === "in" && e.category === "servis")
-    .reduce((s, e) => s + e.amount, 0);
+    .filter((e) => e.category === "servis")
+    .reduce((s, e) => s + (e.type === "in" ? e.amount : -e.amount), 0);
 
   const sales = valid.filter(
     (e) => e.type === "in" && e.category === "jual_unit",

@@ -1,27 +1,18 @@
-import { useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { Search, Smartphone, MessageCircle } from "lucide-react";
-import { db } from "@/db/db";
+import { FirstPhoto } from "@/components/photos";
+import { Input } from "@/components/ui/field";
+import { EmptyState } from "@/components/ui/misc";
+import { usePublicCatalog } from "@/db/public";
+import { isCloud } from "@/db/supabase";
 import { rp } from "@/lib/format";
 import { waLink } from "@/lib/wa";
-import { Input } from "@/components/ui/field";
-import { FirstPhoto } from "@/components/photos";
-import { EmptyState } from "@/components/ui/misc";
+import { MessageCircle, Search, Smartphone } from "lucide-react";
+import { useState } from "react";
 import { PublicFooter, PublicNav, useStoreProfile } from "./landing";
 
 export function KatalogPage() {
   const store = useStoreProfile();
   const [q, setQ] = useState("");
-  const units = useLiveQuery(
-    () =>
-      db.units
-        .where("status")
-        .equals("stok")
-        .filter((u) => u.hargaJual > 0)
-        .reverse()
-        .sortBy("boughtAt"),
-    [],
-  );
+  const { units, error } = usePublicCatalog();
   const filtered = units?.filter((u) =>
     q
       ? `${u.brand} ${u.model} ${u.varian}`.toLowerCase().includes(q.toLowerCase())
@@ -32,10 +23,8 @@ export function KatalogPage() {
     <div className="flex min-h-dvh flex-col bg-slate-50">
       <PublicNav active="katalog" />
       <main className="mx-auto w-full max-w-4xl flex-1 space-y-4 px-4 py-8">
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <b>Segera aktif.</b> Katalog online sedang disiapkan — stok terbaru
-          bisa ditanyakan langsung via WhatsApp konter.
-        </div>
+        {error && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{error}</p>}
+        {!isCloud && <p className="text-xs text-slate-500">Pratinjau lokal — stok ini berasal dari perangkat ini.</p>}
         <div>
           <h1 className="text-xl font-bold">Katalog HP Second</h1>
           <p className="text-sm text-slate-500">
@@ -64,7 +53,7 @@ export function KatalogPage() {
               key={u.id}
               className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white"
             >
-              <FirstPhoto refType="unit" refId={u.id} className="aspect-square w-full rounded-none" />
+              {u.photoUrl ? <img src={u.photoUrl} alt={`${u.brand} ${u.model}`} className="aspect-square w-full object-cover" /> : u.id ? <FirstPhoto refType="unit" refId={u.id} className="aspect-square w-full rounded-none" /> : <div className="aspect-square bg-slate-100" />}
               <div className="flex flex-1 flex-col p-3">
                 <p className="text-sm font-semibold">
                   {u.brand} {u.model}

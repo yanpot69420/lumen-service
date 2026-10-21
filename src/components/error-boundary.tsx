@@ -5,7 +5,7 @@ interface State {
 }
 
 /** Menahan error render agar tidak jadi layar putih tanpa penjelasan. */
-export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
+export class ErrorBoundary extends Component<{ children: ReactNode; }, State> {
   state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): State {
@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
         <div>
           <h1 className="text-lg font-bold">Terjadi kesalahan</h1>
           <p className="mt-1 max-w-sm text-sm text-slate-500">
-            Data Anda aman di perangkat. Muat ulang aplikasi untuk melanjutkan —
+            Muat ulang aplikasi untuk melanjutkan. Periksa kembali data yang belum disimpan —
             bila terulang di halaman yang sama, laporkan pesan di bawah ini.
           </p>
         </div>

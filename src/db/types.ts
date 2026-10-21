@@ -1,6 +1,7 @@
 export type Role = "owner" | "headops" | "kasir" | "teknisi";
+export interface Versioned { _version?: number; }
 
-export interface User {
+export interface User extends Versioned {
   id: string;
   name: string;
   username: string; // lowercase, unik — dipakai untuk login
@@ -10,11 +11,12 @@ export interface User {
   salt: string;
   recoveryHash?: string; // hash kode pemulihan PIN (sekali pakai)
   recoverySalt?: string;
+  recoveryActive?: boolean;
   active: 1 | 0;
   createdAt: number;
 }
 
-export interface Setting {
+export interface Setting extends Versioned {
   key: string;
   value: string;
 }
@@ -38,6 +40,7 @@ export interface StatusEvent {
 }
 
 export interface PartUsed {
+  id?: string;
   partId: string;
   nama: string;
   qty: number;
@@ -45,8 +48,9 @@ export interface PartUsed {
   modal: number; // snapshot modal per pcs
 }
 
-export interface Ticket {
+export interface Ticket extends Versioned {
   id: string;
+  customerId?: string;
   noNota: string;
   garansiDari?: string; // id tiket asal bila ini klaim garansi
   piutang?: number; // sisa belum dibayar saat unit sudah diambil
@@ -58,6 +62,7 @@ export interface Ticket {
   kelengkapan: string[];
   estimasi: number; // estimasi biaya awal
   biayaJasa: number; // harga final jasa (diisi saat konfirmasi)
+  hargaFinal?: boolean;
   dp: number;
   status: TicketStatus;
   history: StatusEvent[];
@@ -67,17 +72,30 @@ export interface Ticket {
   createdBy: string;
 }
 
-export interface Photo {
+export interface Customer extends Versioned {
+  id: string;
+  name: string;
+  phone: string;
+  phoneNormalized: string;
+  notes: string;
+  isRegular: boolean;
+  createdAt: number;
+  updatedAt: number;
+  createdBy: string;
+}
+
+export interface Photo extends Versioned {
   id: string;
   refType: "ticket" | "unit" | "unit-ktp" | "draft";
   refId: string;
   blob: Blob;
+  remotePath?: string;
   createdAt: number;
 }
 
 export type UnitStatus = "stok" | "terjual";
 
-export interface Unit {
+export interface Unit extends Versioned {
   id: string;
   kode: string;
   brand: string;
@@ -99,9 +117,10 @@ export interface Unit {
   createdBy: string;
 }
 
-export interface Part {
+export interface Part extends Versioned {
   id: string;
   nama: string;
+  brand?: string; // absent on older rows; UI can infer from an unambiguous name
   kategori: "sparepart" | "aksesoris";
   stok: number;
   hargaModal: number;
@@ -123,7 +142,7 @@ export type CashCategory =
 
 export type CashMethod = "tunai" | "qris" | "transfer";
 
-export interface CashEntry {
+export interface CashEntry extends Versioned {
   id: string;
   at: number;
   dayKey: string; // YYYY-MM-DD
@@ -134,14 +153,14 @@ export interface CashEntry {
   note: string;
   refType?: "ticket" | "unit" | "part";
   refId?: string;
-  meta?: { modal?: number; qty?: number };
+  meta?: { modal?: number; qty?: number; paymentKind?: "dp" | "settlement" | "piutang" | "refund"; };
   by: string;
   byName: string;
   locked: 1 | 0;
   voided: 1 | 0;
 }
 
-export interface DayClose {
+export interface DayClose extends Versioned {
   dayKey: string;
   expected: number;
   counted: number;
@@ -152,14 +171,14 @@ export interface DayClose {
   closedAt: number;
 }
 
-export interface Correction {
+export interface Correction extends Versioned {
   id: string;
   at: number;
   entity: "cash";
   entityId: string;
   reason: string;
-  before: { amount: number; note: string; voided: 1 | 0 };
-  after: { amount: number; note: string; voided: 1 | 0 };
+  before: { amount: number; note: string; voided: 1 | 0; };
+  after: { amount: number; note: string; voided: 1 | 0; };
   requestedBy: string;
   requestedByName: string;
   status: "pending" | "approved" | "rejected";
@@ -168,7 +187,7 @@ export interface Correction {
   decidedAt?: number;
 }
 
-export interface AuditEntry {
+export interface AuditEntry extends Versioned {
   id: string;
   at: number;
   userId: string;

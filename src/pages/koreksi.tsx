@@ -1,16 +1,15 @@
-import { useLiveQuery } from "dexie-react-hooks";
-import { ClipboardCheck } from "lucide-react";
-import { db } from "@/db/db";
-import type { Correction } from "@/db/types";
-import { CASH_CATEGORY_LABEL } from "@/db/cash";
-import { logAudit } from "@/db/audit";
 import { useUser } from "@/auth/session";
-import { rp, fmtDateTime } from "@/lib/format";
 import { PageBody, PageHeader } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Row } from "@/components/ui/misc";
 import { Tag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
+import { decideCorrection } from "@/db/cash";
+import { db } from "@/db/db";
+import type { Correction } from "@/db/types";
+import { fmtDateTime, rp } from "@/lib/format";
+import { useLiveQuery } from "dexie-react-hooks";
+import { ClipboardCheck } from "lucide-react";
 
 export function KoreksiPage() {
   const user = useUser();
@@ -22,20 +21,7 @@ export function KoreksiPage() {
   const isOwner = user.role === "owner";
 
   async function decide(k: Correction, ok: boolean) {
-    await db.corrections.update(k.id, {
-      status: ok ? "approved" : "rejected",
-      decidedBy: user.id,
-      decidedByName: user.name,
-      decidedAt: Date.now(),
-    });
-    if (ok) await db.cash.update(k.entityId, k.after);
-    await logAudit(
-      user,
-      "koreksi",
-      "kas",
-      k.entityId,
-      `${ok ? "Setujui" : "Tolak"} koreksi dari ${k.requestedByName}: ${k.reason}`,
-    );
+    await decideCorrection(user, k.id, ok);
     toast(ok ? "Koreksi diterapkan" : "Koreksi ditolak");
   }
 

@@ -1,24 +1,23 @@
-import { useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowDownLeft, ArrowUpRight, Lock, Pencil, Plus, Wallet } from "lucide-react";
-import { db, uid } from "@/db/db";
-import type { CashCategory, CashEntry, CashMethod } from "@/db/types";
-import { addCash, CASH_CATEGORY_LABEL, expectedCashToday, sumCash, methodOf } from "@/db/cash";
-import { MethodPicker, MethodTag } from "@/components/method-picker";
-import { logAudit } from "@/db/audit";
+import { canSeeMoney } from "@/auth/roles";
 import { useUser } from "@/auth/session";
-import { rp, dayKey, fmtTime, fmtDate } from "@/lib/format";
 import { PageBody, PageHeader } from "@/components/layout/app-shell";
+import { MethodPicker, MethodTag } from "@/components/method-picker";
 import { Button } from "@/components/ui/button";
 import { Field, Input, RpInput, Select, Textarea } from "@/components/ui/field";
+import { EmptyState, Kpi, Row } from "@/components/ui/misc";
 import { Sheet } from "@/components/ui/sheet";
-import { Kpi, EmptyState, Row } from "@/components/ui/misc";
-import { Tag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
+import { CASH_CATEGORY_LABEL, closeCash, expectedCashToday, methodOf, recordManualCash, requestCorrection, sumCash } from "@/db/cash";
+import { db } from "@/db/db";
+import type { CashCategory, CashEntry, CashMethod } from "@/db/types";
 import { cn } from "@/lib/cn";
+import { dayKey, fmtDate, fmtTime, rp } from "@/lib/format";
+import { useLiveQuery } from "dexie-react-hooks";
+import { ArrowDownLeft, ArrowUpRight, Lock, Pencil, Plus, Wallet } from "lucide-react";
+import { useState } from "react";
 
 const MANUAL_IN: CashCategory[] = ["modal_masuk", "lainnya"];
-const MANUAL_OUT: CashCategory[] = ["restok_part", "operasional", "prive", "lainnya"];
+const MANUAL_OUT: CashCategory[] = ["operasional", "prive", "lainnya"];
 
 export function KasPage() {
   const user = useUser();
@@ -38,6 +37,7 @@ export function KasPage() {
   const [closeOpen, setCloseOpen] = useState(false);
   const [korEntry, setKorEntry] = useState<CashEntry | null>(null);
 
+  if (!canSeeMoney(user.role)) return <PageBody>Halaman Kas khusus Owner / Head Operasional.</PageBody>;
   const { masuk, keluar } = sumCash(entries ?? []);
   const isToday = day === today;
 
@@ -54,12 +54,24 @@ export function KasPage() {
       <PageBody>
         <Input
           type="date"
+          aria-label="Tanggal pencatatan kas"
           value={day}
           max={today}
           onChange={(e) => setDay(e.target.value || today)}
-          className="w-full sm:w-48"
+          className="w-full lg:w-48"
         />
-        <div className="grid grid-cols-3 gap-2">
+        <section className="space-y-3 lg:hidden" aria-label="Ringkasan kas">
+          <div className="rounded-[26px] bg-[#10221f] p-5 text-white">
+            <div className="flex items-center gap-2 text-xs text-white/60"><Wallet className="size-4 text-[#f5bd45]" /> {isToday ? "Tunai di laci" : "Arus kas bersih"}</div>
+            <p className="mt-3 break-words text-[30px] font-semibold leading-tight tracking-[-0.04em] tabular-nums">{rp(isToday ? (expected ?? 0) : masuk - keluar)}</p>
+            <p className="mt-2 text-xs leading-relaxed text-white/50">{isToday ? "Perkiraan uang tunai. QRIS dan transfer terpisah." : `Pemasukan dikurangi pengeluaran pada ${fmtDate(new Date(`${day}T12:00:00+08:00`).getTime())}.`}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-[22px] border border-[#e4e7df] bg-white p-4"><p className="flex items-center gap-2 text-xs text-slate-500"><ArrowDownLeft className="size-4 text-emerald-600" /> Masuk</p><p className="mt-2 break-words text-lg font-bold tracking-tight text-emerald-700 tabular-nums">{rp(masuk)}</p></div>
+            <div className="rounded-[22px] border border-[#e4e7df] bg-white p-4"><p className="flex items-center gap-2 text-xs text-slate-500"><ArrowUpRight className="size-4 text-red-500" /> Keluar</p><p className="mt-2 break-words text-lg font-bold tracking-tight text-red-600 tabular-nums">{rp(keluar)}</p></div>
+          </div>
+        </section>
+        <div className="hidden grid-cols-3 gap-2 lg:grid">
           <Kpi label="Masuk" value={rp(masuk)} tone="positive" />
           <Kpi label="Keluar" value={rp(keluar)} tone="negative" />
           <Kpi
@@ -102,12 +114,13 @@ export function KasPage() {
             hint="Transaksi servis & jual-beli tercatat otomatis di sini."
           />
         )}
-        <div className="space-y-2">
+        <div className="flex items-end justify-between px-1 lg:hidden"><div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-slate-400">Catatan harian</p><h2 className="mt-1 text-base font-bold tracking-tight">Aktivitas kas</h2></div><span className="text-xs text-slate-500">{entries?.length ?? 0} transaksi</span></div>
+        <div className="space-y-3 lg:space-y-2">
           {entries?.map((e) => (
             <div
               key={e.id}
               className={cn(
-                "flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5",
+                "flex items-start gap-3 rounded-[22px] border border-[#e4e7df] bg-white p-4 lg:items-center lg:rounded-2xl lg:border-slate-200 lg:p-3.5",
                 e.voided === 1 && "opacity-50",
               )}
             >
@@ -126,18 +139,19 @@ export function KasPage() {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className={cn("truncate text-sm font-medium", e.voided === 1 && "line-through")}>
+                <p className={cn("line-clamp-2 text-sm font-semibold leading-relaxed lg:truncate lg:font-medium", e.voided === 1 && "line-through")}>
                   {e.note || CASH_CATEGORY_LABEL[e.category]}
                 </p>
-                <p className="flex items-center gap-1.5 text-xs text-slate-400">
+                <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] leading-relaxed text-slate-400 lg:mt-0 lg:text-xs">
                   {fmtTime(e.at)} · {CASH_CATEGORY_LABEL[e.category]} · {e.byName}
                   <MethodTag method={methodOf(e)} />
                   {e.voided === 1 && " · DIBATALKAN"}
                 </p>
+                <p className={cn("mt-3 text-base font-bold tabular-nums lg:hidden", e.type === "in" ? "text-emerald-700" : "text-red-600", e.voided === 1 && "line-through")}>{e.type === "in" ? "+" : "−"}{rp(e.amount)}</p>
               </div>
               <p
                 className={cn(
-                  "text-sm font-bold tabular-nums",
+                  "hidden text-sm font-bold tabular-nums lg:block",
                   e.type === "in" ? "text-emerald-600" : "text-red-600",
                   e.voided === 1 && "line-through",
                 )}
@@ -150,7 +164,7 @@ export function KasPage() {
               ) : (
                 <button
                   onClick={() => setKorEntry(e)}
-                  className="shrink-0 text-slate-300 hover:text-brand-500"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:text-brand-500 lg:size-auto lg:bg-transparent lg:text-slate-300"
                   aria-label="Ajukan koreksi"
                 >
                   <Pencil className="size-4" />
@@ -175,7 +189,7 @@ export function KasPage() {
   );
 }
 
-function AddCashSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AddCashSheet({ open, onClose }: { open: boolean; onClose: () => void; }) {
   const user = useUser();
   const toast = useToast();
   const [type, setType] = useState<"in" | "out">("out");
@@ -240,17 +254,7 @@ function AddCashSheet({ open, onClose }: { open: boolean; onClose: () => void })
           onClick={async () => {
             setBusy(true);
             try {
-              const id = await addCash(user, {
-                type,
-                category,
-                amount,
-                method,
-                note: note.trim(),
-              });
-              await logAudit(
-                user, "kas", "kas", id,
-                `${type === "in" ? "Masuk" : "Keluar"} ${rp(amount)} (${CASH_CATEGORY_LABEL[category]}): ${note.trim()}`,
-              );
+              await recordManualCash(user, { type, category, amount, method, note: note.trim() });
               toast("Tercatat");
               setAmount(0);
               setNote("");
@@ -321,22 +325,7 @@ function TutupKasSheet({
           onClick={async () => {
             setBusy(true);
             try {
-              const dk = dayKey();
-              await db.dayCloses.put({
-                dayKey: dk,
-                expected,
-                counted,
-                selisih,
-                note: note.trim(),
-                closedBy: user.id,
-                closedByName: user.name,
-                closedAt: Date.now(),
-              });
-              await db.cash.where("dayKey").equals(dk).modify({ locked: 1 });
-              await logAudit(
-                user, "tutup-kas", "kas", dk,
-                `Tutup kas ${dk}: sistem ${rp(expected)}, fisik ${rp(counted)}, selisih ${rp(selisih)}`,
-              );
+              await closeCash(user, counted, note.trim(), expected);
               toast("Kas hari ini ditutup");
               onClose();
             } finally {
@@ -422,43 +411,7 @@ function KoreksiSheet({
           onClick={async () => {
             setBusy(true);
             try {
-              const pendingSame = await db.corrections
-                .where("status")
-                .equals("pending")
-                .and((k) => k.entityId === entry.id)
-                .count();
-              if (pendingSame > 0) {
-                toast("Transaksi ini sudah punya koreksi yang menunggu persetujuan", "error");
-                return;
-              }
-              const after = voidIt
-                ? { amount: entry.amount, note: entry.note, voided: 1 as const }
-                : { amount, note: note.trim(), voided: 0 as const };
-              const kor = {
-                id: uid(),
-                at: Date.now(),
-                entity: "cash" as const,
-                entityId: entry.id,
-                reason: reason.trim(),
-                before: { amount: entry.amount, note: entry.note, voided: entry.voided },
-                after,
-                requestedBy: user.id,
-                requestedByName: user.name,
-                status: isOwner ? ("approved" as const) : ("pending" as const),
-                ...(isOwner && {
-                  decidedBy: user.id,
-                  decidedByName: user.name,
-                  decidedAt: Date.now(),
-                }),
-              };
-              await db.corrections.add(kor);
-              if (isOwner) {
-                await db.cash.update(entry.id, after);
-              }
-              await logAudit(
-                user, "koreksi", "kas", entry.id,
-                `${isOwner ? "Koreksi langsung" : "Ajukan koreksi"}: ${reason.trim()}`,
-              );
+              await requestCorrection(user, entry.id, { amount: voidIt ? entry.amount : amount, note: note.trim(), voided: voidIt ? 1 : 0 }, reason.trim());
               toast(
                 isOwner
                   ? "Koreksi diterapkan & tercatat"

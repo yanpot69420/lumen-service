@@ -1,14 +1,14 @@
-import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { useSession } from "@/auth/session";
-import { db } from "@/db/db";
 import { hashPin, newSalt } from "@/auth/pin";
-import { logAudit } from "@/db/audit";
-import { cloudLogin, isCloud } from "@/db/cloud";
+import { useSession } from "@/auth/session";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
+import { logAudit } from "@/db/audit";
+import { cloudLogin, cloudRecover, isCloud, offlineLogin } from "@/db/cloud";
+import { db } from "@/db/db";
+import { useState } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 
 /** Terima input kode dengan/tanpa strip, huruf kecil, spasi. */
 function normalizeRecoveryCode(raw: string): string {
@@ -41,6 +41,11 @@ export function LoginPage() {
     if (!valid || busy) return;
     setBusy(true);
     try {
+      if (isCloud && !navigator.onLine) {
+        const id = await offlineLogin(username, pin);
+        if (!id) { toast("Akses offline hanya untuk staf terakhir yang login online dalam 24 jam. Sambungkan internet untuk akun lain.", "error"); return; }
+        adopt(id); nav("/app/beranda", { replace: true }); return;
+      }
       if (isCloud) {
         // Verifikasi PIN di server → sesi cloud + tarik users ke cache lokal.
         const r = await cloudLogin(username, pin);
@@ -167,6 +172,10 @@ export function LoginPage() {
             onClick={async () => {
               setBusy(true);
               try {
+                if (isCloud) {
+                  await cloudRecover(rUser, rCode, rPin);
+                  toast("PIN cloud berhasil dipulihkan. Masuk dengan PIN baru."); setRecoverOpen(false); return;
+                }
                 const u = await db.users.where("username").equals(rUser).first();
                 if (!u || !u.active || !u.recoveryHash || !u.recoverySalt) {
                   toast("Username atau kode pemulihan salah", "error");

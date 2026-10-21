@@ -1,49 +1,52 @@
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
-import {
-  ArrowLeft,
-  MessageCircle,
-  Printer,
-  Plus,
-  Trash2,
-  Ban,
-  Pencil,
-  ShieldCheck,
-  Tag as TagIcon,
-  HandCoins,
-} from "lucide-react";
+import { can } from "@/auth/roles";
+import { useUser } from "@/auth/session";
+import { PageBody, PageHeader } from "@/components/layout/app-shell";
+import { MethodPicker } from "@/components/method-picker";
+import { PhotoManager } from "@/components/photos";
+import { useServiceAction } from "@/components/use-service-action";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, Input, RpInput, Select, Textarea } from "@/components/ui/field";
+import { Row } from "@/components/ui/misc";
+import { Modal } from "@/components/ui/dialog";
+import { Tag, TicketStatusTag } from "@/components/ui/status-tag";
 import { db } from "@/db/db";
-import type { CashMethod, Ticket } from "@/db/types";
+import { getSetting, getWaTemplates } from "@/db/settings";
 import {
-  NEXT_ACTIONS,
   GARANSI_SERVIS_HARI,
+  NEXT_ACTIONS,
   changeStatus,
   createGaransiClaim,
   diambilAt,
   payPiutang,
   removePart,
   reviseJasa,
+  submitServicePrice,
+  ticketJasa,
   ticketSisa,
   ticketTotal,
   updateTicketInfo,
   usePart,
 } from "@/db/tickets";
-import { getSetting, getWaTemplates } from "@/db/settings";
-import { useUser } from "@/auth/session";
-import { rp, fmtDateTime, daysSince } from "@/lib/format";
-import { fillTemplate, waLink } from "@/lib/wa";
-import { PageBody, PageHeader } from "@/components/layout/app-shell";
-import { Button } from "@/components/ui/button";
-import { Field, Input, RpInput, Select, Textarea } from "@/components/ui/field";
-import { Sheet } from "@/components/ui/sheet";
-import { TicketStatusTag, Tag } from "@/components/ui/status-tag";
-import { MethodPicker } from "@/components/method-picker";
-import { PhotoManager } from "@/components/photos";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Row } from "@/components/ui/misc";
-import { useToast } from "@/components/ui/toast";
+import type { CashMethod, Ticket } from "@/db/types";
 import { cn } from "@/lib/cn";
+import { daysSince, fmtDateTime, rp } from "@/lib/format";
+import { fillTemplate, waLink } from "@/lib/wa";
+import { useLiveQuery } from "dexie-react-hooks";
+import {
+  ArrowLeft,
+  Ban,
+  HandCoins,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Printer,
+  ShieldCheck,
+  Tag as TagIcon,
+  Trash2,
+} from "lucide-react";
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 const KELENGKAPAN = ["Charger", "Kartu SIM", "Memory Card", "Casing", "SIM Tray"];
 
@@ -51,28 +54,29 @@ export function ServisDetailPage() {
   const { id } = useParams();
   const user = useUser();
   const nav = useNavigate();
-  const toast = useToast();
-  const ticket = useLiveQuery(() => db.tickets.get(id!), [id]);
+  const { run } = useServiceAction();
+  const ticket = useLiveQuery(async () => (await db.tickets.get(id!)) ?? null, [id]);
   const parts = useLiveQuery(() => db.parts.orderBy("nama").toArray(), []);
   const sourceTicket = useLiveQuery(
     () => (ticket?.garansiDari ? db.tickets.get(ticket.garansiDari) : undefined),
     [ticket?.garansiDari],
   );
 
-  const [statusSheet, setStatusSheet] = useState<null | {
+  const [statusModal, setStatusModal] = useState<null | {
     to: Ticket["status"];
     label: string;
   }>(null);
   const [biayaJasa, setBiayaJasa] = useState(0);
+  const [langsungKerjakan, setLangsungKerjakan] = useState(false);
   const [note, setNote] = useState("");
   const [bayar, setBayar] = useState(0);
   const [method, setMethod] = useState<CashMethod>("tunai");
-  const [partSheet, setPartSheet] = useState(false);
+  const [partModal, setPartModal] = useState(false);
   const [partId, setPartId] = useState("");
   const [qty, setQty] = useState(1);
-  const [cancelSheet, setCancelSheet] = useState(false);
+  const [cancelModal, setCancelModal] = useState(false);
   const [refundDp, setRefundDp] = useState(true);
-  const [editSheet, setEditSheet] = useState(false);
+  const [editModal, setEditModal] = useState(false);
   const [editF, setEditF] = useState({
     customerName: "",
     phone: "",
@@ -81,14 +85,15 @@ export function ServisDetailPage() {
     keluhan: "",
     kelengkapan: [] as string[],
   });
-  const [revisiSheet, setRevisiSheet] = useState(false);
+  const [revisiModal, setRevisiModal] = useState(false);
   const [revisiJasa, setRevisiJasa] = useState(0);
-  const [garansiSheet, setGaransiSheet] = useState(false);
-  const [piutangSheet, setPiutangSheet] = useState(false);
+  const [garansiModal, setGaransiModal] = useState(false);
+  const [piutangModal, setPiutangModal] = useState(false);
   const [bayarPiutang, setBayarPiutang] = useState(0);
   const [busy, setBusy] = useState(false);
 
-  if (!ticket) return null;
+  if (ticket === undefined) return <PageBody>Memuat nota…</PageBody>;
+  if (ticket === null) return <PageBody>Nota tidak ditemukan. <Link to="/app/servis" className="underline">Kembali ke daftar servis</Link></PageBody>;
 
   const total = ticketTotal(ticket);
   const sisa = ticketSisa(ticket);
@@ -98,21 +103,44 @@ export function ServisDetailPage() {
   const garansiHariLewat = ambilAt ? daysSince(ambilAt) : 0;
 
   async function doStatus() {
-    if (!ticket || !statusSheet || busy) return;
+    if (!ticket || !statusModal || busy) return;
     setBusy(true);
     try {
-      await changeStatus(user, ticket, statusSheet.to, {
-        note: note.trim() || undefined,
-        biayaJasa:
-          statusSheet.to === "konfirmasi" && biayaJasa > 0
-            ? biayaJasa
-            : undefined,
-        bayar: statusSheet.to === "diambil" ? bayar : undefined,
-        method: statusSheet.to === "diambil" ? method : undefined,
+      await run(async () => {
+        if (statusModal.to === "konfirmasi") {
+          await submitServicePrice(user, ticket, biayaJasa, langsungKerjakan, note.trim() || undefined);
+        } else {
+          await changeStatus(user, ticket, statusModal.to, {
+            note: note.trim() || undefined,
+            bayar: statusModal.to === "diambil" ? bayar : undefined,
+            method: statusModal.to === "diambil" ? method : undefined,
+          });
+        }
+      }, {
+        pending: "Menyimpan status servis…",
+        success: statusModal.to === "konfirmasi" && langsungKerjakan
+          ? "Harga disimpan, servis langsung dikerjakan"
+          : `Status servis: ${statusModal.label}`,
       });
-      toast(`Status → ${statusSheet.label}`);
-      setStatusSheet(null);
+      setStatusModal(null);
       setNote("");
+    } catch {
+      // Snackbar explains the error; keep the form open so it can be corrected.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doRemovePart(index: number) {
+    if (!ticket || busy) return;
+    setBusy(true);
+    try {
+      await run(() => removePart(user, ticket, index), {
+        pending: "Menghapus sparepart dari nota…",
+        success: "Sparepart dihapus dan stok dikembalikan",
+      });
+    } catch {
+      // The action hook displays the failure without changing the nota.
     } finally {
       setBusy(false);
     }
@@ -138,12 +166,12 @@ export function ServisDetailPage() {
       <PageHeader
         title={ticket.noNota}
         back={
-          <Link to="/app/servis" className="text-slate-400 hover:text-slate-600">
+          <Link to="/app/servis" aria-label="Kembali ke daftar servis" className="inline-flex size-11 items-center justify-center rounded-2xl bg-white text-slate-600 hover:text-slate-900 lg:size-auto lg:rounded-none lg:bg-transparent lg:text-slate-400">
             <ArrowLeft className="size-5" />
           </Link>
         }
         action={
-          <div className="flex gap-2">
+          <div className="hidden gap-2 lg:flex">
             <Button variant="outline" size="sm" onClick={sendWa}>
               <MessageCircle /> WA
             </Button>
@@ -165,20 +193,26 @@ export function ServisDetailPage() {
         }
       />
       <PageBody>
+        <div className="grid grid-cols-3 gap-2 lg:hidden" aria-label="Bagikan dan cetak nota">
+          <Button variant="outline" className="h-12 rounded-2xl border-transparent text-xs" onClick={sendWa}><MessageCircle /> WhatsApp</Button>
+          <Button variant="outline" className="h-12 rounded-2xl border-transparent text-xs" onClick={() => nav(`/app/nota/servis/${ticket.id}?label=1`)}><TagIcon /> Label</Button>
+          <Button variant="outline" className="h-12 rounded-2xl border-transparent text-xs" onClick={() => nav(`/app/nota/servis/${ticket.id}`)}><Printer /> Cetak nota</Button>
+        </div>
         {/* Ringkasan */}
-        <Card>
+        <Card className="overflow-hidden rounded-[1.75rem] border-transparent shadow-none lg:rounded-2xl lg:border-slate-200 lg:shadow-sm">
           <CardContent>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-base font-bold">
+            <div className="-mx-4 -mt-4 flex flex-col gap-4 bg-brand-950 p-5 text-white lg:mx-0 lg:mt-0 lg:flex-row lg:items-start lg:justify-between lg:gap-3 lg:bg-transparent lg:p-0 lg:text-slate-900">
+              <div className="min-w-0">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50 lg:hidden">Perangkat pelanggan</p>
+                <p className="break-words text-2xl font-bold leading-tight lg:text-base">
                   {ticket.brand} {ticket.model}
                 </p>
-                <p className="text-sm text-slate-500">
+                <p className="mt-2 break-words text-sm leading-relaxed text-white/65 lg:mt-0 lg:text-slate-500">
                   {ticket.customerName}
                   {ticket.phone && ` · ${ticket.phone}`}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {ticket.garansiDari && (
                   <Tag className="bg-violet-100 text-violet-800">
                     Garansi{sourceTicket ? ` · ${sourceTicket.noNota}` : ""}
@@ -186,6 +220,7 @@ export function ServisDetailPage() {
                 )}
                 <TicketStatusTag status={ticket.status} />
                 <button
+                  disabled={busy}
                   onClick={() => {
                     setEditF({
                       customerName: ticket.customerName,
@@ -195,16 +230,17 @@ export function ServisDetailPage() {
                       keluhan: ticket.keluhan,
                       kelengkapan: ticket.kelengkapan,
                     });
-                    setEditSheet(true);
+                    setEditModal(true);
                   }}
-                  className="text-slate-300 hover:text-brand-500"
+                  className="ml-auto inline-flex size-11 items-center justify-center rounded-2xl bg-white/10 text-white hover:text-accent-400 lg:ml-0 lg:size-7 lg:rounded-lg lg:bg-transparent lg:text-slate-300 lg:hover:text-brand-500"
                   aria-label="Edit data nota"
                 >
                   <Pencil className="size-4" />
                 </button>
               </div>
             </div>
-            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">
+            <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 lg:hidden">Keluhan perangkat</p>
+            <p className="rounded-2xl bg-[#f4f5f0] p-3 text-sm leading-relaxed lg:mt-3 lg:rounded-xl lg:bg-slate-50">
               {ticket.keluhan}
             </p>
             {ticket.kelengkapan.length > 0 && (
@@ -212,18 +248,19 @@ export function ServisDetailPage() {
                 Kelengkapan: {ticket.kelengkapan.join(", ")}
               </p>
             )}
-            <div className="mt-3 border-t border-slate-100 pt-2">
+            <div className="mt-4 border-t border-slate-100 pt-3 lg:mt-3 lg:pt-2">
               <Row label={ticket.biayaJasa ? "Biaya jasa" : "Estimasi biaya"}>
                 <span className="flex items-center justify-end gap-2">
-                  {rp(ticket.biayaJasa || ticket.estimasi)}
+                  {rp(ticketJasa(ticket))}
                   {canRevise && (
                     <button
+                      disabled={busy}
                       onClick={() => {
-                        setRevisiJasa(ticket.biayaJasa || ticket.estimasi);
+                        setRevisiJasa(ticketJasa(ticket));
                         setNote("");
-                        setRevisiSheet(true);
+                        setRevisiModal(true);
                       }}
-                      className="text-xs font-medium text-brand-600 underline"
+                      className="inline-flex min-h-11 items-center rounded-xl bg-slate-50 px-3 text-xs font-semibold text-brand-600 lg:min-h-0 lg:rounded-none lg:bg-transparent lg:px-0 lg:font-medium lg:underline"
                     >
                       revisi
                     </button>
@@ -236,8 +273,9 @@ export function ServisDetailPage() {
                     {rp(p.harga * p.qty)}
                     {!done && (
                       <button
-                        onClick={() => removePart(user, ticket, i)}
-                        className="text-slate-300 hover:text-red-500"
+                        onClick={() => void doRemovePart(i)}
+                        disabled={busy}
+                        className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500 hover:text-red-700 lg:size-auto lg:rounded-none lg:bg-transparent lg:text-slate-300 lg:hover:text-red-500"
                         aria-label="Hapus part"
                       >
                         <Trash2 className="size-3.5" />
@@ -271,11 +309,12 @@ export function ServisDetailPage() {
           <Button
             variant="accent"
             size="lg"
-            className="w-full"
+            className="h-auto min-h-12 w-full py-3 text-sm leading-relaxed lg:h-12 lg:py-0 lg:text-base"
+            disabled={busy}
             onClick={() => {
               setBayarPiutang(ticket.piutang!);
               setMethod("tunai");
-              setPiutangSheet(true);
+              setPiutangModal(true);
             }}
           >
             <HandCoins /> Terima Pembayaran Piutang — {rp(ticket.piutang!)}
@@ -288,57 +327,22 @@ export function ServisDetailPage() {
             variant="outline"
             size="lg"
             className="w-full"
+            disabled={busy}
             onClick={() => {
               setNote("");
-              setGaransiSheet(true);
+              setGaransiModal(true);
             }}
           >
             <ShieldCheck /> Klaim Garansi
           </Button>
         )}
 
-        {/* Aksi status */}
-        {!done && (
-          <div className="flex flex-wrap gap-2">
-            {NEXT_ACTIONS[ticket.status].map((a) => (
-              <Button
-                key={a.to}
-                variant="accent"
-                size="lg"
-                className="flex-1"
-                onClick={() => {
-                  setBiayaJasa(ticket.biayaJasa || ticket.estimasi);
-                  if (a.to === "diambil") {
-                    setBayar(sisa);
-                    setMethod("tunai");
-                  }
-                  setStatusSheet(a);
-                }}
-              >
-                {a.label}
-              </Button>
-            ))}
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={() => {
-                setNote("");
-                setRefundDp(true);
-                setMethod("tunai");
-                setCancelSheet(true);
-              }}
-            >
-              <Ban /> Batal
-            </Button>
-          </div>
-        )}
-
         {/* Sparepart */}
         {!done && (
-          <Card>
+          <Card className="rounded-[1.5rem] border-transparent shadow-none lg:rounded-2xl lg:border-slate-200 lg:shadow-sm">
             <CardHeader>
               <CardTitle>Sparepart dipakai</CardTitle>
-              <Button variant="secondary" size="sm" onClick={() => setPartSheet(true)}>
+              <Button variant="secondary" size="sm" className="h-11 rounded-2xl px-4 lg:h-8 lg:rounded-xl lg:px-3" disabled={busy} onClick={() => setPartModal(true)}>
                 <Plus /> Tambah
               </Button>
             </CardHeader>
@@ -348,29 +352,72 @@ export function ServisDetailPage() {
           </Card>
         )}
 
+        {/* Aksi status */}
+        {!done && (
+          <section className="rounded-[1.5rem] bg-white p-4 lg:rounded-none lg:bg-transparent lg:p-0" aria-label="Tindakan servis">
+            <p className="mb-3 text-xs font-bold text-brand-950 lg:hidden">Langkah berikutnya</p>
+          <div className="flex flex-wrap gap-2">
+            {NEXT_ACTIONS[ticket.status].filter((a) => a.to !== "diambil" || can(user.role, "sell")).map((a) => (
+              <Button
+                key={a.to}
+                variant="accent"
+                size="lg"
+                className="min-w-0 flex-1 rounded-2xl px-3 text-sm lg:rounded-xl lg:px-5 lg:text-base"
+                disabled={busy}
+                onClick={() => {
+                  setBiayaJasa(ticketJasa(ticket));
+                  setLangsungKerjakan(false);
+                  if (a.to === "diambil") {
+                    setBayar(sisa);
+                    setMethod("tunai");
+                  }
+                  setStatusModal(a);
+                }}
+              >
+                {a.label}
+              </Button>
+            ))}
+            {can(user.role, "sell") && <Button
+              variant="outline"
+              size="lg"
+              className="rounded-2xl px-4 text-sm lg:rounded-xl lg:px-5 lg:text-base"
+              disabled={busy}
+              onClick={() => {
+                setNote("");
+                setRefundDp(true);
+                setMethod("tunai");
+                setCancelModal(true);
+              }}
+            >
+              <Ban /> Batal
+            </Button>}
+          </div>
+          </section>
+        )}
+
         {/* Foto */}
-        <Card>
+        <Card className="rounded-[1.5rem] border-transparent shadow-none lg:rounded-2xl lg:border-slate-200 lg:shadow-sm">
           <CardHeader>
             <CardTitle>Foto kondisi</CardTitle>
           </CardHeader>
           <CardContent>
-            <PhotoManager refType="ticket" refId={ticket.id} canDelete={!done} />
+            <PhotoManager refType="ticket" refId={ticket.id} canDelete={!done} serviceUndo disabled={busy} onBusyChange={setBusy} />
           </CardContent>
         </Card>
 
         {/* Riwayat */}
-        <Card>
+        <Card className="rounded-[1.5rem] border-transparent shadow-none lg:rounded-2xl lg:border-slate-200 lg:shadow-sm">
           <CardHeader>
             <CardTitle>Riwayat status</CardTitle>
           </CardHeader>
           <CardContent>
-            <ol className="space-y-3">
+            <ol className="space-y-4 lg:space-y-3">
               {[...ticket.history].reverse().map((h, i) => (
                 <li key={i} className="flex gap-3 text-sm">
-                  <div className="mt-1 size-2 shrink-0 rounded-full bg-brand-500" />
+                  <div className="mt-1 flex size-4 shrink-0 items-center justify-center rounded-full bg-brand-50 lg:size-2 lg:bg-brand-500"><span className="size-1.5 rounded-full bg-brand-500 lg:hidden" /></div>
                   <div>
                     <TicketStatusTag status={h.status} />
-                    <p className="mt-0.5 text-xs text-slate-400">
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400 lg:mt-0.5">
                       {fmtDateTime(h.at)} · {h.by}
                       {h.note && ` — ${h.note}`}
                     </p>
@@ -382,22 +429,34 @@ export function ServisDetailPage() {
         </Card>
       </PageBody>
 
-      {/* Sheet transisi status */}
-      <Sheet
-        open={!!statusSheet}
-        onClose={() => setStatusSheet(null)}
-        title={statusSheet?.label ?? ""}
+      {/* Modal transisi status */}
+      <Modal
+        busy={busy}
+        open={!!statusModal}
+        onClose={() => setStatusModal(null)}
+        title={statusModal?.label ?? ""}
       >
         <div className="space-y-4">
-          {statusSheet?.to === "konfirmasi" && (
-            <Field
-              label="Biaya jasa final"
-              hint="Harga yang diajukan ke pelanggan (di luar sparepart)."
-            >
-              <RpInput value={biayaJasa} onChange={setBiayaJasa} />
-            </Field>
+          {statusModal?.to === "konfirmasi" && (
+            <>
+              <Field label="Biaya jasa final" hint="Harga yang diajukan ke pelanggan (di luar sparepart).">
+                <RpInput value={biayaJasa} onChange={setBiayaJasa} />
+              </Field>
+              <div className="rounded-xl bg-slate-50 p-4 text-sm">
+                <Row label="Biaya jasa">{rp(biayaJasa)}</Row>
+                <Row label="Sparepart">{rp(ticket.partsUsed.reduce((sum, p) => sum + p.harga * p.qty, 0))}</Row>
+                <Row label="Total biaya" strong>{rp(ticketTotal({ ...ticket, biayaJasa, hargaFinal: true }))}</Row>
+              </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm">
+                <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-brand-600" checked={langsungKerjakan} onChange={(e) => setLangsungKerjakan(e.target.checked)} />
+                <span>
+                  <span className="block font-medium">Langsung kerjakan</span>
+                  <span className="mt-1 block text-xs text-slate-500">Pilih jika pelanggan sudah menyetujui biaya. Setelah disimpan, status langsung menjadi Dikerjakan.</span>
+                </span>
+              </label>
+            </>
           )}
-          {statusSheet?.to === "diambil" && (
+          {statusModal?.to === "diambil" && (
             <>
               <div className="rounded-xl bg-emerald-50 p-4 text-sm">
                 <Row label="Total">{rp(total)}</Row>
@@ -429,13 +488,13 @@ export function ServisDetailPage() {
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
           <Button size="lg" className="w-full" disabled={busy} onClick={doStatus}>
-            {statusSheet?.label}
+            {statusModal?.to === "konfirmasi" && langsungKerjakan ? "Simpan Harga & Kerjakan" : statusModal?.label}
           </Button>
         </div>
-      </Sheet>
+      </Modal>
 
-      {/* Sheet tambah part */}
-      <Sheet open={partSheet} onClose={() => setPartSheet(false)} title="Pakai Sparepart">
+      {/* Modal tambah part */}
+      <Modal busy={busy} open={partModal} onClose={() => setPartModal(false)} title="Pakai Sparepart">
         <div className="space-y-4">
           <Field label="Sparepart" required>
             <Select value={partId} onChange={(e) => setPartId(e.target.value)}>
@@ -461,16 +520,18 @@ export function ServisDetailPage() {
             className="w-full"
             disabled={!partId || busy}
             onClick={async () => {
-              if (!ticket) return;
+              if (!ticket || busy) return;
               setBusy(true);
               try {
-                await usePart(user, ticket, partId, qty);
-                toast("Sparepart ditambahkan");
-                setPartSheet(false);
+                await run(() => usePart(user, ticket, partId, qty), {
+                  pending: "Menambahkan sparepart ke nota…",
+                  success: "Sparepart ditambahkan dan stok diperbarui",
+                });
+                setPartModal(false);
                 setPartId("");
                 setQty(1);
-              } catch (e) {
-                toast(e instanceof Error ? e.message : "Gagal", "error");
+              } catch {
+                // Keep the selected part and quantity available for correction.
               } finally {
                 setBusy(false);
               }
@@ -479,10 +540,10 @@ export function ServisDetailPage() {
             Tambahkan ke Nota
           </Button>
         </div>
-      </Sheet>
+      </Modal>
 
-      {/* Sheet batal */}
-      <Sheet open={cancelSheet} onClose={() => setCancelSheet(false)} title="Batalkan Servis">
+      {/* Modal batal */}
+      <Modal busy={busy} open={cancelModal} onClose={() => setCancelModal(false)} title="Batalkan Servis">
         <div className="space-y-4">
           <Field label="Alasan pembatalan" required>
             <Textarea
@@ -520,17 +581,21 @@ export function ServisDetailPage() {
             className="w-full"
             disabled={!note.trim() || busy}
             onClick={async () => {
-              if (!ticket) return;
+              if (!ticket || busy) return;
               setBusy(true);
               try {
-                await changeStatus(user, ticket, "batal", {
+                await run(() => changeStatus(user, ticket, "batal", {
                   note: note.trim(),
                   refundDp: ticket.dp > 0 ? refundDp : undefined,
                   method,
+                }), {
+                  pending: "Membatalkan servis…",
+                  success: "Servis dibatalkan",
                 });
-                toast("Servis dibatalkan", "info");
-                setCancelSheet(false);
+                setCancelModal(false);
                 setNote("");
+              } catch {
+                // The action hook displays the failure and preserves this form.
               } finally {
                 setBusy(false);
               }
@@ -539,10 +604,10 @@ export function ServisDetailPage() {
             Batalkan Servis
           </Button>
         </div>
-      </Sheet>
+      </Modal>
 
-      {/* Sheet edit info */}
-      <Sheet open={editSheet} onClose={() => setEditSheet(false)} title="Edit Data Nota">
+      {/* Modal edit info */}
+      <Modal busy={busy} open={editModal} onClose={() => setEditModal(false)} title="Edit Data Nota">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Field label="Nama pelanggan" required>
@@ -611,11 +676,16 @@ export function ServisDetailPage() {
             className="w-full"
             disabled={!editF.customerName.trim() || !editF.brand.trim() || busy}
             onClick={async () => {
+              if (busy) return;
               setBusy(true);
               try {
-                await updateTicketInfo(user, ticket, editF);
-                toast("Data nota diperbarui");
-                setEditSheet(false);
+                await run(() => updateTicketInfo(user, ticket, editF), {
+                  pending: "Menyimpan perubahan nota…",
+                  success: "Data nota diperbarui",
+                });
+                setEditModal(false);
+              } catch {
+                // Keep the edited values available for correction.
               } finally {
                 setBusy(false);
               }
@@ -624,14 +694,14 @@ export function ServisDetailPage() {
             Simpan Perubahan
           </Button>
         </div>
-      </Sheet>
+      </Modal>
 
-      {/* Sheet revisi harga */}
-      <Sheet open={revisiSheet} onClose={() => setRevisiSheet(false)} title="Revisi Harga Jasa">
+      {/* Modal revisi harga */}
+      <Modal busy={busy} open={revisiModal} onClose={() => setRevisiModal(false)} title="Revisi Harga Jasa">
         <div className="space-y-4">
           <div className="rounded-xl bg-slate-50 p-4 text-sm">
             <Row label="Harga sekarang" strong>
-              {rp(ticket.biayaJasa || ticket.estimasi)}
+              {rp(ticketJasa(ticket))}
             </Row>
           </div>
           <Field label="Harga jasa baru" required>
@@ -648,12 +718,17 @@ export function ServisDetailPage() {
             className="w-full"
             disabled={!note.trim() || busy}
             onClick={async () => {
+              if (busy) return;
               setBusy(true);
               try {
-                await reviseJasa(user, ticket, revisiJasa, note.trim());
-                toast("Harga direvisi & tercatat");
-                setRevisiSheet(false);
+                await run(() => reviseJasa(user, ticket, revisiJasa, note.trim()), {
+                  pending: "Menyimpan revisi harga…",
+                  success: "Revisi harga jasa tercatat",
+                });
+                setRevisiModal(false);
                 setNote("");
+              } catch {
+                // The action hook displays the failure and preserves this form.
               } finally {
                 setBusy(false);
               }
@@ -662,10 +737,10 @@ export function ServisDetailPage() {
             Simpan Revisi
           </Button>
         </div>
-      </Sheet>
+      </Modal>
 
-      {/* Sheet klaim garansi */}
-      <Sheet open={garansiSheet} onClose={() => setGaransiSheet(false)} title="Klaim Garansi">
+      {/* Modal klaim garansi */}
+      <Modal busy={busy} open={garansiModal} onClose={() => setGaransiModal(false)} title="Klaim Garansi">
         <div className="space-y-4">
           <div
             className={cn(
@@ -697,13 +772,19 @@ export function ServisDetailPage() {
             className="w-full"
             disabled={!note.trim() || busy}
             onClick={async () => {
+              if (busy) return;
               setBusy(true);
               try {
-                const t = await createGaransiClaim(user, ticket, note.trim());
-                toast(`Nota garansi ${t.noNota} dibuat`);
-                setGaransiSheet(false);
+                const t = await run(() => createGaransiClaim(user, ticket, note.trim()), {
+                  pending: "Membuat nota garansi…",
+                  success: (claim) => `Nota garansi ${claim.noNota} dibuat`,
+                  onUndo: () => nav(`/app/servis/${ticket.id}`),
+                });
+                setGaransiModal(false);
                 setNote("");
                 nav(`/app/servis/${t.id}`);
+              } catch {
+                // The action hook displays the failure and preserves this form.
               } finally {
                 setBusy(false);
               }
@@ -712,10 +793,10 @@ export function ServisDetailPage() {
             Buat Nota Garansi
           </Button>
         </div>
-      </Sheet>
+      </Modal>
 
-      {/* Sheet bayar piutang */}
-      <Sheet open={piutangSheet} onClose={() => setPiutangSheet(false)} title="Pembayaran Piutang">
+      {/* Modal bayar piutang */}
+      <Modal busy={busy} open={piutangModal} onClose={() => setPiutangModal(false)} title="Pembayaran Piutang">
         <div className="space-y-4">
           <div className="rounded-xl bg-red-50 p-4 text-sm">
             <Row label="Piutang saat ini" strong>
@@ -736,11 +817,16 @@ export function ServisDetailPage() {
             className="w-full"
             disabled={bayarPiutang <= 0 || busy}
             onClick={async () => {
+              if (busy) return;
               setBusy(true);
               try {
-                await payPiutang(user, ticket, bayarPiutang, method);
-                toast("Pembayaran piutang tercatat");
-                setPiutangSheet(false);
+                await run(() => payPiutang(user, ticket, bayarPiutang, method), {
+                  pending: "Mencatat pembayaran piutang…",
+                  success: "Pembayaran piutang tercatat",
+                });
+                setPiutangModal(false);
+              } catch {
+                // The action hook displays the failure and preserves this form.
               } finally {
                 setBusy(false);
               }
@@ -749,7 +835,7 @@ export function ServisDetailPage() {
             Catat Pembayaran
           </Button>
         </div>
-      </Sheet>
+      </Modal>
     </>
   );
 }

@@ -1,3 +1,5 @@
+import { hashPin, newSalt } from "@/auth/pin";
+import { db } from "./db";
 import { supabase } from "./supabase";
 import { pullCore } from "./sync";
 
@@ -34,7 +36,8 @@ async function adoptSession(tokenHash: string): Promise<boolean> {
 }
 
 export async function cloudSignOut(): Promise<void> {
-  await supabase?.auth.signOut();
+  try { if (navigator.onLine) await supabase?.auth.signOut({ scope: "local" }); }
+  finally { localStorage.removeItem("lumen.cloud.session"); }
 }
 
 /** Apakah toko sudah di-setup di cloud (ada user)? Dipakai untuk memutuskan
@@ -49,14 +52,15 @@ export async function cloudStatus(): Promise<{
 }
 
 export interface CloudSetupInput {
-  store: { name: string; phone: string };
-  owner: { name: string; username: string; pin: string };
-  headops: { name: string; username: string; pin: string };
+  setupToken?: string;
+  store: { name: string; phone: string; };
+  owner: { name: string; username: string; pin: string; };
+  headops: { name: string; username: string; pin: string; };
 }
 
 export async function cloudSetup(
   input: CloudSetupInput,
-): Promise<{ ok: boolean; recoveryCode?: string; error?: string }> {
+): Promise<{ ok: boolean; recoveryCode?: string; error?: string; }> {
   const res = await invokeAuth("setup", input);
   if (!res?.ok) return { ok: false, error: res?.error ?? "Setup cloud gagal" };
   if (!(await adoptSession(res.tokenHash)))
@@ -70,12 +74,51 @@ export async function cloudSetup(
 export async function cloudLogin(
   username: string,
   pin: string,
-): Promise<{ ok: boolean; userId?: string; error?: string }> {
+): Promise<{ ok: boolean; userId?: string; error?: string; }> {
   const res = await invokeAuth("login", { username, pin });
   if (!res?.ok) return { ok: false, error: res?.error };
   if (!(await adoptSession(res.tokenHash)))
     return { ok: false, error: "Gagal membuat sesi" };
   await pullCore();
-  const userId = String(res.email ?? "").split("@")[0] || undefined;
+  const userId = res.userId as string | undefined;
+  if (userId) await rememberOfflineLogin(userId, pin);
   return { ok: true, userId };
 }
+
+export async function cloudRecover(username: string, code: string, newPin: string) {
+  const res = await invokeAuth("recover", { username, code, newPin });
+  if (!res?.ok) throw new Error(res?.error ?? "Pemulihan PIN gagal");
+  await forgetOfflineLogin();
+}
+export async function manageCloudAccount(action: string, payload: object = {}) {
+  const res = await invokeAuth(action, payload);
+  if (!res?.ok) throw new Error(res?.error ?? "Perubahan akun gagal");
+  if (res.tokenHash && !await adoptSession(res.tokenHash)) throw new Error("PIN berubah. Silakan login ulang.");
+  await pullCore();
+  return res;
+}
+const OFFLINE_KEY = "offline.login";
+interface OfflineCredential { userId: string; username: string; pinHash: string; salt: string; expires: number; }
+async function rememberOfflineLogin(userId: string, pin: string) {
+  const user = await db.users.get(userId); if (!user) throw new Error("Profil staf belum tersedia");
+  const salt = newSalt();
+  const record: OfflineCredential = { userId, username: user.username, pinHash: await hashPin(pin, salt), salt, expires: Date.now() + 24 * 3600000 };
+  await db.settings.put({ key: OFFLINE_KEY, value: JSON.stringify(record) });
+}
+export async function offlineLogin(username: string, pin: string) {
+  const raw = await db.settings.get(OFFLINE_KEY);
+  if (!raw) return null;
+  const record = JSON.parse(raw.value) as OfflineCredential;
+  if (record.username !== username.trim().toLowerCase() || record.expires < Date.now()) return null;
+  const user = await db.users.get(record.userId);
+  if (!user?.active || await hashPin(pin, record.salt) !== record.pinHash) return null;
+  return user.id;
+}
+export async function offlineSessionValid(userId: string) {
+  try {
+    const raw = await db.settings.get(OFFLINE_KEY);
+    const value = raw ? JSON.parse(raw.value) as OfflineCredential : null;
+    return !!value && value.userId === userId && value.expires >= Date.now();
+  } catch { return false; }
+}
+export async function forgetOfflineLogin() { await db.settings.delete(OFFLINE_KEY); }

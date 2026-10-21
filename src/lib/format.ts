@@ -3,10 +3,9 @@ export function rp(n: number): string {
 }
 
 export function dayKey(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Makassar", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const value = (key: string) => parts.find((p) => p.type === key)!.value;
+  return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
 export function monthKey(d: Date = new Date()): string {
@@ -15,6 +14,7 @@ export function monthKey(d: Date = new Date()): string {
 
 export function fmtDate(t: number): string {
   return new Date(t).toLocaleDateString("id-ID", {
+    timeZone: "Asia/Makassar",
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -23,6 +23,7 @@ export function fmtDate(t: number): string {
 
 export function fmtDateTime(t: number): string {
   return new Date(t).toLocaleDateString("id-ID", {
+    timeZone: "Asia/Makassar",
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -32,6 +33,7 @@ export function fmtDateTime(t: number): string {
 
 export function fmtTime(t: number): string {
   return new Date(t).toLocaleTimeString("id-ID", {
+    timeZone: "Asia/Makassar",
     hour: "2-digit",
     minute: "2-digit",
   });

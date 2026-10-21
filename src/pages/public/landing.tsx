@@ -1,20 +1,20 @@
+import { FirstPhoto } from "@/components/photos";
+import { publicProfile, usePublicCatalog } from "@/db/public";
+import { getSetting } from "@/db/settings";
+import { isCloud } from "@/db/supabase";
+import { rp } from "@/lib/format";
+import { waLink } from "@/lib/wa";
+import {
+  Clock,
+  MapPin,
+  MessageCircle,
+  Search,
+  ShieldCheck,
+  Smartphone,
+  Wrench,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
-import {
-  Wrench,
-  Smartphone,
-  ShieldCheck,
-  Search,
-  MessageCircle,
-  MapPin,
-  Clock,
-} from "lucide-react";
-import { db } from "@/db/db";
-import { getSetting } from "@/db/settings";
-import { waLink } from "@/lib/wa";
-import { rp } from "@/lib/format";
-import { FirstPhoto } from "@/components/photos";
 
 export function useStoreProfile() {
   const [s, setS] = useState({
@@ -23,22 +23,29 @@ export function useStoreProfile() {
     address: "",
     phone: "",
     hours: "",
+    error: "",
   });
   useEffect(() => {
     (async () => {
+      if (isCloud) {
+        try { const p = await publicProfile(); setS({ name: p.storeName || "Lumen Service", tagline: p.storeTagline || "", address: p.storeAddress || "", phone: p.storePhone || "", hours: p.storeHours || "", error: "" }); }
+        catch (e) { setS((s) => ({ ...s, error: e instanceof Error ? e.message : "Profil belum tersedia" })); }
+        return;
+      }
       setS({
         name: await getSetting("storeName"),
         tagline: await getSetting("storeTagline"),
         address: await getSetting("storeAddress"),
         phone: await getSetting("storePhone"),
         hours: await getSetting("storeHours"),
+        error: "",
       });
     })();
   }, []);
   return s;
 }
 
-export function PublicNav({ active }: { active: "home" | "katalog" | "cek" }) {
+export function PublicNav({ active }: { active: "home" | "katalog" | "cek"; }) {
   const links = [
     ["home", "/", "Beranda"],
     ["katalog", "/katalog", "Katalog HP"],
@@ -83,16 +90,8 @@ export function PublicFooter() {
 
 export function LandingPage() {
   const store = useStoreProfile();
-  const featured = useLiveQuery(
-    () =>
-      db.units
-        .where("status")
-        .equals("stok")
-        .filter((u) => u.hargaJual > 0)
-        .limit(4)
-        .toArray(),
-    [],
-  );
+  const { units } = usePublicCatalog();
+  const featured = units?.slice(0, 4);
 
   const layanan = [
     {
@@ -116,6 +115,7 @@ export function LandingPage() {
     <div className="min-h-dvh bg-brand-950">
       <PublicNav active="home" />
 
+      {store.error && <p role="alert" className="mx-auto max-w-4xl bg-amber-50 p-3 text-sm text-amber-800">{store.error}</p>}
       {/* Hero */}
       <section className="mx-auto max-w-4xl px-4 pb-16 pt-14 text-center">
         <h1 className="text-3xl font-black leading-tight text-white sm:text-5xl">
@@ -171,7 +171,7 @@ export function LandingPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {featured?.map((u) => (
                 <div key={u.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  <FirstPhoto refType="unit" refId={u.id} className="aspect-square w-full rounded-none" />
+                  {u.photoUrl ? <img src={u.photoUrl} alt={`${u.brand} ${u.model}`} className="aspect-square w-full rounded-none object-cover" /> : u.id ? <FirstPhoto refType="unit" refId={u.id} className="aspect-square w-full rounded-none" /> : <div className="aspect-square bg-slate-800" />}
                   <div className="p-3">
                     <p className="truncate text-sm font-semibold">
                       {u.brand} {u.model}

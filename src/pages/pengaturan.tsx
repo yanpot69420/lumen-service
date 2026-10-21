@@ -1,29 +1,30 @@
-import { useEffect, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { Download, Plus, Upload, UserX, KeyRound } from "lucide-react";
-import { db, uid } from "@/db/db";
-import type { Role, TicketStatus, User } from "@/db/types";
-import { TICKET_STATUSES } from "@/db/types";
-import { getSetting, getWaTemplates, setSetting } from "@/db/settings";
-import { hashPin, newSalt, newRecoveryCode } from "@/auth/pin";
-import { usernameSlug, USERNAME_RE } from "@/lib/username";
-import {
-  encryptBackup,
-  decryptBackup,
-  blobToDataUrl,
-  dataUrlToBlob,
-} from "@/lib/backup";
-import { logAudit } from "@/db/audit";
-import { useUser } from "@/auth/session";
 import { canSeeMoney } from "@/auth/roles";
+import { useUser } from "@/auth/session";
 import { PageBody, PageHeader, ROLE_LABEL } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
-import { ConfirmDialog } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TICKET_STATUS_LABEL } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
+import { createAccount, deactivateAccount, renewRecoveryCode, resetAccountPin } from "@/db/accounts";
+import { logAudit } from "@/db/audit";
+import { exportBackup, exportSafetyBackup, restoreBackup } from "@/db/backup";
+import { db } from "@/db/db";
+import { getSetting, getWaTemplates, saveStoreSettings, setSetting } from "@/db/settings";
+import { isCloud } from "@/db/supabase";
+import type { Role, TicketStatus, User } from "@/db/types";
+import { TICKET_STATUSES } from "@/db/types";
+import {
+  decryptBackup,
+  encryptBackup,
+} from "@/lib/backup";
+import { validateBackup } from "@/lib/backup-schema";
+import { USERNAME_RE, usernameSlug } from "@/lib/username";
+import { useLiveQuery } from "dexie-react-hooks";
+import { Download, KeyRound, Plus, Upload, UserX } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export function PengaturanPage() {
   const user = useUser();
@@ -32,10 +33,10 @@ export function PengaturanPage() {
     <>
       <PageHeader title="Pengaturan" />
       <PageBody>
-        <StoreSection />
+        {canSeeMoney(user.role) && <StoreSection />}
         {isOwner && <UsersSection />}
         {isOwner && <RecoverySection />}
-        <WaSection />
+        {canSeeMoney(user.role) && <WaSection />}
         {canSeeMoney(user.role) && <BackupSection />}
         <p className="pb-4 text-center text-xs text-slate-300">
           Lumen Service v0.1 — data tersimpan di perangkat ini.
@@ -46,6 +47,7 @@ export function PengaturanPage() {
 }
 
 function StoreSection() {
+  const user = useUser();
   const toast = useToast();
   const [f, setF] = useState({
     storeName: "",
@@ -100,7 +102,7 @@ function StoreSection() {
         </Field>
         <Button
           onClick={async () => {
-            for (const [k, v] of Object.entries(f)) await setSetting(k, v.trim());
+            await saveStoreSettings(user, f);
             toast("Profil toko disimpan");
           }}
         >
@@ -241,28 +243,7 @@ function UsersSection() {
               !/^\d{4,6}$/.test(f.pin)
             }
             onClick={async () => {
-              const dupe = await db.users
-                .where("username")
-                .equals(f.username)
-                .count();
-              if (dupe > 0) {
-                toast(`Username "${f.username}" sudah dipakai`, "error");
-                return;
-              }
-              const salt = newSalt();
-              const id = uid();
-              await db.users.add({
-                id,
-                name: f.name.trim(),
-                username: f.username,
-                role: f.role,
-                pinHash: await hashPin(f.pin, salt),
-                pinVer: 2,
-                salt,
-                active: 1,
-                createdAt: Date.now(),
-              });
-              await logAudit(me, "buat", "pengguna", id, `Pengguna baru: ${f.name.trim()} (${ROLE_LABEL[f.role]})`);
+              await createAccount(me, f);
               toast("Pengguna ditambahkan");
               setFormOpen(false);
             }}
@@ -289,13 +270,7 @@ function UsersSection() {
             disabled={!/^\d{4,6}$/.test(newPin)}
             onClick={async () => {
               if (!pinTarget) return;
-              const salt = newSalt();
-              await db.users.update(pinTarget.id, {
-                salt,
-                pinHash: await hashPin(newPin, salt),
-                pinVer: 2,
-              });
-              await logAudit(me, "pin", "pengguna", pinTarget.id, `Reset PIN ${pinTarget.name}`);
+              await resetAccountPin(me, pinTarget.id, newPin);
               toast("PIN direset");
               setPinTarget(null);
             }}
@@ -313,8 +288,7 @@ function UsersSection() {
         onCancel={() => setDeactTarget(null)}
         onConfirm={async () => {
           if (!deactTarget) return;
-          await db.users.update(deactTarget.id, { active: 0 });
-          await logAudit(me, "nonaktif", "pengguna", deactTarget.id, `Nonaktifkan ${deactTarget.name}`);
+          await deactivateAccount(me, deactTarget.id);
           toast("Pengguna dinonaktifkan");
           setDeactTarget(null);
         }}
@@ -331,7 +305,7 @@ function RecoverySection() {
   const [code, setCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const hasCode = useLiveQuery(
-    async () => !!(await db.users.get(user.id))?.recoveryHash,
+    async () => { const u = await db.users.get(user.id); return !!(u?.recoveryHash || u?.recoveryActive); },
     [user.id],
   );
 
@@ -352,16 +326,7 @@ function RecoverySection() {
           onClick={async () => {
             setBusy(true);
             try {
-              const c = newRecoveryCode();
-              const salt = newSalt();
-              await db.users.update(user.id, {
-                recoveryHash: await hashPin(c, salt),
-                recoverySalt: salt,
-              });
-              await logAudit(
-                user, "kode-pemulihan", "pengguna", user.id,
-                "Kode pemulihan PIN dibuat ulang",
-              );
+              const c = await renewRecoveryCode(user);
               setCode(c);
             } finally {
               setBusy(false);
@@ -397,6 +362,7 @@ function RecoverySection() {
 }
 
 function WaSection() {
+  const user = useUser();
   const toast = useToast();
   const [tpls, setTpls] = useState<Record<TicketStatus, string> | null>(null);
 
@@ -424,7 +390,7 @@ function WaSection() {
         ))}
         <Button
           onClick={async () => {
-            await setSetting("waTemplates", JSON.stringify(tpls));
+            await saveStoreSettings(user, { waTemplates: JSON.stringify(tpls) });
             toast("Template disimpan");
           }}
         >
@@ -460,32 +426,7 @@ function BackupSection() {
   async function doExport() {
     setBusy(true);
     try {
-      const photos = includePhotos
-        ? await Promise.all(
-            (await db.photos.toArray()).map(async (p) => ({
-              id: p.id,
-              refType: p.refType,
-              refId: p.refId,
-              createdAt: p.createdAt,
-              dataUrl: await blobToDataUrl(p.blob),
-            })),
-          )
-        : [];
-      const payload = {
-        app: "lumen-service",
-        version: 2,
-        exportedAt: new Date().toISOString(),
-        users: await db.users.toArray(),
-        settings: await db.settings.toArray(),
-        tickets: await db.tickets.toArray(),
-        units: await db.units.toArray(),
-        parts: await db.parts.toArray(),
-        cash: await db.cash.toArray(),
-        dayCloses: await db.dayCloses.toArray(),
-        corrections: await db.corrections.toArray(),
-        audit: await db.audit.toArray(),
-        photos,
-      };
+      const payload = await exportBackup(includePhotos);
       const json = JSON.stringify(payload);
       const out = passphrase.trim()
         ? JSON.stringify(await encryptBackup(json, passphrase.trim()))
@@ -515,6 +456,7 @@ function BackupSection() {
     try {
       const raw = JSON.parse(await file.text());
       if (raw.app !== "lumen-service") throw new Error("File bukan backup Lumen");
+      if (raw.enc !== 1) validateBackup(raw);
       setImportEnc(raw.enc === 1);
       setImportPass("");
       setImportFile(file);
@@ -535,60 +477,8 @@ function BackupSection() {
           throw new Error("Passphrase salah");
         }
       }
-      // Normalisasi backup versi lama: user tanpa username tetap bisa login.
-      const taken = new Set<string>();
-      const users = (raw.users ?? []).map(
-        (u: { name: string; username?: string }) => {
-          let uname = u.username || usernameSlug(u.name) || "user";
-          let i = 1;
-          const base = uname;
-          while (taken.has(uname)) uname = `${base}${++i}`;
-          taken.add(uname);
-          return { ...u, username: uname };
-        },
-      );
-      const photoRows = await Promise.all(
-        ((raw.photos ?? []) as {
-          id: string;
-          refType: string;
-          refId: string;
-          createdAt: number;
-          dataUrl: string;
-        }[]).map(async (p) => ({
-          id: p.id,
-          refType: p.refType as "ticket" | "unit" | "unit-ktp",
-          refId: p.refId,
-          createdAt: p.createdAt,
-          blob: await dataUrlToBlob(p.dataUrl),
-        })),
-      );
-      await db.transaction(
-        "rw",
-        [db.users, db.settings, db.tickets, db.units, db.parts, db.cash, db.dayCloses, db.corrections, db.audit, db.photos],
-        async () => {
-          await Promise.all([
-            db.users.clear(), db.settings.clear(), db.tickets.clear(),
-            db.units.clear(), db.parts.clear(), db.cash.clear(),
-            db.dayCloses.clear(), db.corrections.clear(), db.audit.clear(),
-            db.photos.clear(),
-          ]);
-          await db.users.bulkAdd(users);
-          await db.settings.bulkAdd(raw.settings ?? []);
-          await db.tickets.bulkAdd(raw.tickets ?? []);
-          await db.units.bulkAdd(raw.units ?? []);
-          await db.parts.bulkAdd(raw.parts ?? []);
-          await db.cash.bulkAdd(raw.cash ?? []);
-          await db.dayCloses.bulkAdd(raw.dayCloses ?? []);
-          await db.corrections.bulkAdd(raw.corrections ?? []);
-          await db.audit.bulkAdd(raw.audit ?? []);
-          await db.photos.bulkAdd(photoRows);
-        },
-      );
-      toast(
-        photoRows.length > 0
-          ? "Data & foto berhasil dipulihkan"
-          : "Data dipulihkan (backup ini tidak berisi foto)",
-      );
+      const result = await restoreBackup(raw);
+      toast(`Data dipulihkan (${result.photos} foto). Salinan data sebelumnya tersimpan di perangkat.`);
       setImportFile(null);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Gagal import", "error");
@@ -646,11 +536,21 @@ function BackupSection() {
             placeholder="kosongkan = tanpa enkripsi"
           />
         </Field>
+        <Button variant="ghost" size="sm" onClick={async () => {
+          try {
+            const payload = await exportSafetyBackup();
+            const text = JSON.stringify(payload);
+            const blob = new Blob([passphrase.trim() ? JSON.stringify(await encryptBackup(text, passphrase.trim())) : text], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a"); a.href = url; a.download = "lumen-sebelum-pemulihan.json"; a.click(); URL.revokeObjectURL(url);
+          } catch (e) { toast(e instanceof Error ? e.message : "Gagal mengunduh", "error"); }
+        }}>Unduh salinan sebelum pemulihan terakhir</Button>
+        {isCloud && <p className="text-xs text-slate-500">Pemulihan cloud dilakukan administrator dari backup database agar data server dan perangkat tetap konsisten.</p>}
         <div className="flex gap-2">
           <Button variant="outline" className="flex-1" disabled={busy} onClick={doExport}>
             <Download /> Unduh Backup
           </Button>
-          <label className="flex-1">
+          {!isCloud && <label className="flex-1">
             <input
               type="file"
               accept="application/json"
@@ -663,7 +563,7 @@ function BackupSection() {
             <span className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium hover:bg-slate-50 [&_svg]:size-4">
               <Upload /> Pulihkan Backup
             </span>
-          </label>
+          </label>}
         </div>
       </CardContent>
       <ConfirmDialog

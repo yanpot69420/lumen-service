@@ -1,9 +1,11 @@
-import { db, uid } from "./db";
 import { dayKey } from "@/lib/format";
-import { methodOf } from "./money";
+import { logAudit } from "./audit";
+import { db, uid } from "./db";
+import { methodOf, ticketTotal } from "./money";
+import { amount, operation } from "./operations";
 import type { CashCategory, CashEntry, User } from "./types";
 
-export { sumCash, methodOf, METHOD_LABEL } from "./money";
+export { METHOD_LABEL, methodOf, sumCash } from "./money";
 
 export const CASH_CATEGORY_LABEL: Record<CashCategory, string> = {
   servis: "Servis",
@@ -25,6 +27,8 @@ export async function addCash(
     "id" | "at" | "dayKey" | "by" | "byName" | "locked" | "voided"
   >,
 ): Promise<string> {
+  amount(entry.amount, "Nominal", true);
+  if (await db.dayCloses.get(dayKey())) throw new Error("Kas hari ini sudah ditutup");
   const id = uid();
   await db.cash.add({
     method: "tunai",
@@ -38,6 +42,69 @@ export async function addCash(
     voided: 0,
   });
   return id;
+}
+
+export async function recordManualCash(user: User, entry: Parameters<typeof addCash>[1]) {
+  return operation(user, "cash", async (actor) => {
+    const allowed = entry.type === "in" ? ["modal_masuk", "lainnya"] : ["operasional", "prive", "lainnya"];
+    if (!allowed.includes(entry.category) || !entry.note.trim()) throw new Error("Kategori/alasan kas manual tidak valid. Restok dicatat dari halaman Stok.");
+    const id = await addCash(actor, entry);
+    await logAudit(actor, "kas", "kas", id, `${entry.type}: ${entry.amount}. ${entry.note}`);
+  });
+}
+export async function closeCash(user: User, counted: number, note: string, displayedExpected: number) {
+  return operation(user, "close", async (actor) => {
+    amount(counted); const key = dayKey();
+    if (await db.dayCloses.get(key)) throw new Error("Kas sudah ditutup");
+    const expected = await expectedCashToday();
+    if (expected !== displayedExpected) throw new Error("Saldo kas sudah berubah. Periksa jumlah terbaru sebelum menutup kas.");
+    if (counted !== expected && !note.trim()) throw new Error("Penjelasan selisih wajib diisi");
+    await db.cash.where("dayKey").equals(key).modify({ locked: 1 });
+    await db.dayCloses.add({ dayKey: key, expected, counted, selisih: counted - expected, note, closedBy: actor.id, closedByName: actor.name, closedAt: Date.now() });
+    await logAudit(actor, "tutup-kas", "kas", key, `Sistem ${expected}, fisik ${counted}, selisih ${counted - expected}`);
+  });
+}
+async function applyCorrection(entry: CashEntry, after: { amount: number; note: string; voided: 0 | 1; }) {
+  if (entry.category === "jual_unit" && after.voided) throw new Error("Pembatalan penjualan unit harus melalui Retur Unit");
+  const wasDp = entry.category === "servis" && entry.type === "in" && (entry.meta?.paymentKind ? entry.meta.paymentKind === "dp" : entry.note.startsWith("DP servis "));
+  await db.cash.update(entry.id, { ...after, ...(wasDp ? { meta: { ...entry.meta, paymentKind: "dp" } } : {}) });
+  if (entry.refType === "ticket" && entry.refId) {
+    const ticket = await db.tickets.get(entry.refId);
+    if (ticket) {
+      const entries = await db.cash.where("refId").equals(ticket.id).and((c) => c.category === "servis" && !c.voided).toArray();
+      const net = entries.reduce((s, c) => s + (c.type === "in" ? c.amount : -c.amount), 0);
+      const dp = entries.filter((c) => c.type === "in" && (c.meta?.paymentKind ? c.meta.paymentKind === "dp" : c.note.startsWith("DP servis "))).reduce((s, c) => s + c.amount, 0);
+      await db.tickets.update(ticket.id, { dp, ...(ticket.status === "diambil" ? { piutang: Math.max(0, ticketTotal(ticket) - net) } : {}), updatedAt: Date.now() });
+    }
+  }
+  if (entry.category === "jual_unit" && entry.refId) {
+    const unit = await db.units.get(entry.refId);
+    const latest = await db.cash.where("refId").equals(entry.refId).and((c) => c.category === "jual_unit").sortBy("at");
+    if (unit?.status === "terjual" && latest.at(-1)?.id === entry.id) await db.units.update(unit.id, { soldPrice: after.amount });
+  }
+}
+export async function requestCorrection(user: User, id: string, after: { amount: number; note: string; voided: 0 | 1; }, reason: string) {
+  return operation(user, "correction", async (actor) => {
+    amount(after.amount); if (!reason.trim()) throw new Error("Alasan wajib diisi");
+    const entry = await db.cash.get(id); if (!entry) throw new Error("Transaksi tidak ditemukan");
+    if (actor.role === "kasir" && entry.by !== actor.id) throw new Error("Koreksi hanya untuk transaksi Anda sendiri");
+    if (await db.corrections.where("status").equals("pending").and((c) => c.entityId === id).count()) throw new Error("Sudah ada koreksi yang menunggu");
+    const approved = actor.role === "owner";
+    await db.corrections.add({ id: uid(), at: Date.now(), entity: "cash", entityId: id, reason: reason.trim(), before: { amount: entry.amount, note: entry.note, voided: entry.voided }, after, requestedBy: actor.id, requestedByName: actor.name, status: approved ? "approved" : "pending", ...(approved ? { decidedBy: actor.id, decidedByName: actor.name, decidedAt: Date.now() } : {}) });
+    if (approved) await applyCorrection(entry, after);
+    await logAudit(actor, "koreksi", "kas", id, `${approved ? "Terapkan" : "Ajukan"}: ${reason}`);
+  });
+}
+export async function decideCorrection(user: User, id: string, approved: boolean) {
+  return operation(user, "approve", async (actor) => {
+    const correction = await db.corrections.get(id);
+    if (!correction || correction.status !== "pending") throw new Error("Koreksi sudah diputuskan");
+    const entry = await db.cash.get(correction.entityId);
+    if (!entry || entry.amount !== correction.before.amount || entry.note !== correction.before.note || entry.voided !== correction.before.voided) throw new Error("Transaksi sumber sudah berubah");
+    if (approved) await applyCorrection(entry, correction.after);
+    await db.corrections.update(id, { status: approved ? "approved" : "rejected", decidedBy: actor.id, decidedByName: actor.name, decidedAt: Date.now() });
+    await logAudit(actor, "koreksi", "kas", entry.id, `${approved ? "Setujui" : "Tolak"}: ${correction.reason}`);
+  });
 }
 
 /**

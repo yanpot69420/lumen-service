@@ -1,3 +1,8 @@
+import { cloudSignOut, forgetOfflineLogin, offlineSessionValid } from "@/db/cloud";
+import { db } from "@/db/db";
+import { isCloud, supabase } from "@/db/supabase";
+import type { User } from "@/db/types";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
   createContext,
   useContext,
@@ -7,9 +12,6 @@ import {
   type ReactNode,
 } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/db/db";
-import type { User } from "@/db/types";
 import { hashPin, verifyPin } from "./pin";
 
 const SESSION_KEY = "lumen.session.userId";
@@ -20,17 +22,30 @@ interface SessionCtx {
   hasUsers: boolean;
   login: (username: string, pin: string) => Promise<boolean>;
   adopt: (userId: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const Ctx = createContext<SessionCtx | null>(null);
 
-export function SessionProvider({ children }: { children: ReactNode }) {
+export function SessionProvider({ children }: { children: ReactNode; }) {
   const [userId, setUserId] = useState<string | null>(() =>
     localStorage.getItem(SESSION_KEY),
   );
   const users = useLiveQuery(() => db.users.toArray(), []);
-  const ready = users !== undefined;
+  const [authReady, setAuthReady] = useState(!isCloud);
+  const ready = users !== undefined && authReady;
+  useEffect(() => {
+    if (!isCloud) return;
+    let cancelled = false;
+    void (async () => {
+      const candidate = localStorage.getItem(SESSION_KEY);
+      const { data } = await supabase!.auth.getSession();
+      const valid = candidate && (data.session?.user.email === `${candidate}@lumen.local` || (!navigator.onLine && await offlineSessionValid(candidate)));
+      if (!valid) { localStorage.removeItem(SESSION_KEY); if (!cancelled) setUserId(null); }
+      if (!cancelled) setAuthReady(true);
+    })().catch(() => { if (!cancelled) { setUserId(null); setAuthReady(true); } });
+    return () => { cancelled = true; };
+  }, []);
   const user =
     (userId && users?.find((u) => u.id === userId && u.active)) || null;
 
@@ -54,8 +69,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     events.forEach((e) => window.addEventListener(e, bump, { passive: true }));
     const iv = setInterval(() => {
       if (Date.now() - lastActive.current > IDLE_MS) {
-        localStorage.removeItem(SESSION_KEY);
-        setUserId(null);
+        void endSession(true);
       }
     }, 30_000);
     return () => {
@@ -63,6 +77,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       clearInterval(iv);
     };
   }, [user?.id]);
+  useEffect(() => {
+    const expired = () => { void endSession(false); };
+    window.addEventListener("lumen:session-expired", expired);
+    return () => window.removeEventListener("lumen:session-expired", expired);
+  }, []);
 
   async function login(username: string, pin: string): Promise<boolean> {
     const u = await db.users
@@ -91,10 +110,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUserId(userId);
   }
 
-  function logout() {
-    localStorage.removeItem(SESSION_KEY);
-    setUserId(null);
+  async function endSession(keepOffline: boolean) {
+    localStorage.removeItem(SESSION_KEY); setUserId(null);
+    if (isCloud) {
+      if (!keepOffline) await forgetOfflineLogin();
+      await cloudSignOut();
+    }
   }
+  async function logout() { await endSession(false); }
 
   return (
     <Ctx.Provider
@@ -125,7 +148,7 @@ export function useUser(): User {
   return user;
 }
 
-export function RequireAuth({ children }: { children: ReactNode }) {
+export function RequireAuth({ children }: { children: ReactNode; }) {
   const { user, ready, hasUsers } = useSession();
   const loc = useLocation();
   if (!ready) return null;
@@ -135,7 +158,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export function RequireOwner({ children }: { children: ReactNode }) {
+export function RequireOwner({ children }: { children: ReactNode; }) {
   const { user } = useSession();
   if (user?.role !== "owner")
     return (

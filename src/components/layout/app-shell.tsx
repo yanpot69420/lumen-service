@@ -1,35 +1,37 @@
-import { useEffect } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
-import {
-  LayoutDashboard,
-  Wrench,
-  Smartphone,
-  Wallet,
-  Menu as MenuIcon,
-  BarChart3,
-  ClipboardCheck,
-  ScrollText,
-  Settings,
-  Globe,
-  LogOut,
-  Cloud,
-  CloudOff,
-  RefreshCw,
-  Check,
-} from "lucide-react";
-import { useSession, useUser } from "@/auth/session";
 import { canSeeMoney } from "@/auth/roles";
+import { useSession, useUser } from "@/auth/session";
 import { db } from "@/db/db";
 import { isCloud } from "@/db/supabase";
-import { startSync, stopSync, useSyncStatus } from "@/db/sync";
+import { startSync, stopSync, syncNow, useSyncStatus } from "@/db/sync";
 import { cn } from "@/lib/cn";
+import { useLiveQuery } from "dexie-react-hooks";
+import {
+  BarChart3,
+  Check,
+  ClipboardCheck,
+  Cloud,
+  CloudOff,
+  Globe,
+  LayoutDashboard,
+  LogOut,
+  Menu as MenuIcon,
+  Plus,
+  RefreshCw,
+  ScrollText,
+  Settings,
+  Smartphone,
+  Users,
+  Wallet,
+  Wrench,
+} from "lucide-react";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 
 export function SyncPill() {
   const s = useSyncStatus();
   if (!isCloud) return null;
   const map = {
-    off: { icon: Cloud, text: "Cloud siap", cls: "text-slate-400" },
+    off: { icon: Cloud, text: "Cloud terkunci", cls: "text-slate-400" },
     idle: { icon: Check, text: "Tersinkron", cls: "text-emerald-400" },
     syncing: { icon: RefreshCw, text: "Menyinkron…", cls: "text-sky-400" },
     error: { icon: CloudOff, text: "Gagal sinkron", cls: "text-amber-400" },
@@ -38,9 +40,11 @@ export function SyncPill() {
   const m = map[s.state];
   const Icon = m.icon;
   return (
-    <div className="flex items-center gap-1.5 px-2 text-[11px] font-medium text-slate-400">
+    <div className="flex flex-wrap items-center gap-1.5 px-2 text-[11px] font-medium text-slate-400" role="status">
       <Icon className={cn("size-3.5", m.cls, s.state === "syncing" && "animate-spin")} />
       <span className={m.cls}>{m.text}</span>
+      {s.error && <span className="w-full break-words text-amber-500">{s.error}</span>}
+      {s.state === "error" && <><button onClick={() => { void syncNow(); }} className="underline">Coba lagi</button><NavLink to="/app/pengaturan" className="underline">Simpan backup</NavLink></>}
       {s.pending > 0 && (
         <span className="ml-auto rounded-full bg-white/10 px-1.5 text-[10px]">
           {s.pending} antre
@@ -58,6 +62,7 @@ const mainNav = [
 ];
 
 const moreNav = [
+  { to: "/app/pelanggan", label: "Pelanggan", icon: Users, ownerOnly: false },
   { to: "/app/laporan", label: "Laporan", icon: BarChart3, moneyOnly: true, ownerOnly: false },
   { to: "/app/koreksi", label: "Koreksi", icon: ClipboardCheck, ownerOnly: false },
   { to: "/app/audit", label: "Audit Log", icon: ScrollText, ownerOnly: true },
@@ -73,8 +78,20 @@ export const ROLE_LABEL: Record<string, string> = {
 
 export function AppShell() {
   const user = useUser();
+  const visibleMainNav = mainNav.filter((n) => n.to !== "/app/kas" || canSeeMoney(user.role));
   const { logout } = useSession();
   const nav = useNavigate();
+  const { pathname, key: routeKey } = useLocation();
+  const navigationType = useNavigationType();
+  const scrollPositions = useRef(new Map<string, number>());
+  const previousPath = useRef("");
+  const moreActive = !["/app/beranda", "/app/servis", "/app/stok"].some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  useLayoutEffect(() => {
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
+    if (previousPath.current !== pathname) window.scrollTo(0, navigationType === "POP" ? scrollPositions.current.get(routeKey) ?? 0 : 0);
+    previousPath.current = pathname;
+    return () => { scrollPositions.current.set(routeKey, window.scrollY); };
+  }, [pathname, routeKey, navigationType]);
   const pendingCorrections = useLiveQuery(
     () => db.corrections.where("status").equals("pending").count(),
     [],
@@ -115,7 +132,7 @@ export function AppShell() {
   );
 
   return (
-    <div className="min-h-dvh lg:flex">
+    <div className="app-shell min-h-dvh lg:flex">
       {/* Sidebar desktop */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col bg-brand-950 p-4 lg:flex">
         <div className="mb-6 flex items-center gap-2 px-2">
@@ -128,7 +145,7 @@ export function AppShell() {
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
-          {mainNav.map((n) => navItem(n.to, n.label, n.icon))}
+          {visibleMainNav.map((n) => navItem(n.to, n.label, n.icon))}
           <div className="my-2 border-t border-white/10" />
           {moreNav
             .filter((n) => !n.ownerOnly || user.role === "owner")
@@ -160,8 +177,8 @@ export function AppShell() {
             <p className="text-[10px] text-slate-400">{ROLE_LABEL[user.role]}</p>
           </div>
           <button
-            onClick={() => {
-              logout();
+            onClick={async () => {
+              await logout();
               nav("/app/login");
             }}
             className="text-slate-400 hover:text-white"
@@ -173,41 +190,51 @@ export function AppShell() {
       </aside>
 
       {/* Konten */}
-      <main className="min-w-0 flex-1 pb-20 lg:ml-60 lg:pb-8">
+      <main id="main-content" className="app-main min-w-0 flex-1 pb-28 lg:ml-60 lg:pb-8">
+        {isCloud && <div className="bg-brand-950 px-4 py-2 lg:hidden"><SyncPill /></div>}
         <Outlet />
       </main>
 
       {/* Bottom nav mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
-        <div className="grid grid-cols-5">
-          {mainNav.map(({ to, label, icon: Icon }) => (
+      <nav aria-label="Navigasi utama mobile" className="mobile-dock fixed inset-x-0 bottom-0 z-30 lg:hidden">
+        <div className="mobile-dock-inner">
+          {mainNav.slice(0, 2).map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) =>
                 cn(
-                  "flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium",
-                  isActive ? "text-brand-600" : "text-slate-400",
+                  "mobile-dock-item",
+                  isActive && "is-active",
                 )
               }
             >
-              <Icon className="size-5" />
+              <span className="mobile-dock-icon"><Icon className="size-5" /></span>
               {label}
             </NavLink>
           ))}
+          <Link to="/app/servis/baru" onClick={(event) => {
+            if (pathname === "/app/servis/baru") {
+              event.preventDefault();
+              window.dispatchEvent(new Event("lumen:new-service"));
+            }
+          }} aria-label="Buat nota servis baru" aria-current={pathname === "/app/servis/baru" ? "page" : undefined} className="mobile-dock-create">
+            <span><Plus className="size-6" strokeWidth={2.5} /></span>
+            <span>Nota baru</span>
+          </Link>
+          <NavLink to="/app/stok" className={({ isActive }) => cn("mobile-dock-item", isActive && "is-active")}>
+            <span className="mobile-dock-icon"><Smartphone className="size-5" /></span>
+            Stok
+          </NavLink>
           <NavLink
             to="/app/menu"
-            className={({ isActive }) =>
-              cn(
-                "relative flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium",
-                isActive ? "text-brand-600" : "text-slate-400",
-              )
-            }
+            aria-current={moreActive ? "page" : undefined}
+            className={cn("mobile-dock-item", moreActive && "is-active")}
           >
-            <MenuIcon className="size-5" />
-            Lainnya
+            <span className="mobile-dock-icon"><MenuIcon className="size-5" /></span>
+            Menu
             {!!pendingCorrections && (
-              <span className="absolute right-4 top-1 size-2 rounded-full bg-accent-500" />
+              <span className="absolute right-4 top-2 size-2 rounded-full bg-accent-500" />
             )}
           </NavLink>
         </div>
@@ -220,26 +247,30 @@ export function PageHeader({
   title,
   action,
   back,
+  subtitle,
 }: {
   title: string;
   action?: React.ReactNode;
   back?: React.ReactNode;
+  subtitle?: string;
 }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="flex h-14 items-center gap-3 px-4 lg:px-8">
-        {back}
-        <h1 className="min-w-0 flex-1 truncate text-base font-bold lg:text-lg">
-          {title}
-        </h1>
-        {action}
+    <header className="page-header sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+      <div className="page-header-inner flex h-14 items-center gap-3 px-4 lg:px-8">
+        {back && <div className="page-header-back shrink-0">{back}</div>}
+        <div className="min-w-0 flex-1">
+          <p className="page-header-eyebrow lg:hidden">Lumen Service</p>
+          <h1 className="page-header-title truncate text-base font-bold lg:text-lg">{title}</h1>
+          {subtitle && <p className="mt-1 text-xs text-slate-500">{subtitle}</p>}
+        </div>
+        {action && <div className="page-header-action flex shrink-0 items-center gap-2">{action}</div>}
       </div>
     </header>
   );
 }
 
-export function PageBody({ children }: { children: React.ReactNode }) {
+export function PageBody({ children }: { children: React.ReactNode; }) {
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4 lg:p-8">{children}</div>
+    <div className="page-body mx-auto max-w-5xl space-y-4 p-4 lg:p-8">{children}</div>
   );
 }

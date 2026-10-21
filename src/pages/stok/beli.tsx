@@ -1,20 +1,20 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
-import { db } from "@/db/db";
-import { useUser } from "@/auth/session";
 import { canSeeMoney } from "@/auth/roles";
-import { buyUnit } from "@/db/units";
-import type { CashMethod, Unit } from "@/db/types";
-import { luhnValidImei } from "@/lib/imei";
-import { rp } from "@/lib/format";
+import { useUser } from "@/auth/session";
 import { PageBody, PageHeader } from "@/components/layout/app-shell";
-import { Button } from "@/components/ui/button";
-import { Field, Input, RpInput, Textarea } from "@/components/ui/field";
 import { MethodPicker } from "@/components/method-picker";
-import { ConfirmDialog } from "@/components/ui/dialog";
 import { PendingPhotos } from "@/components/photos";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/dialog";
+import { Field, Input, RpInput, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { db, uid } from "@/db/db";
+import type { CashMethod, Unit } from "@/db/types";
+import { buyUnit } from "@/db/units";
+import { rp } from "@/lib/format";
+import { luhnValidImei } from "@/lib/imei";
+import { ArrowLeft } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 export function BeliUnitPage() {
   const user = useUser();
@@ -37,6 +37,43 @@ export function BeliUnitPage() {
   const [method, setMethod] = useState<CashMethod>("tunai");
   const [dupe, setDupe] = useState<Unit | null>(null);
   const [busy, setBusy] = useState(false);
+  const requestId = useRef(uid());
+  const saving = useRef(false);
+  const [loaded, setLoaded] = useState(false);
+  const [restored, setRestored] = useState(false);
+  useEffect(() => {
+    if (!canSeeMoney(user.role)) return;
+    let cancelled = false;
+    void (async () => {
+      const raw = await db.settings.get("draftBeliBaru");
+      const images = await db.photos.where("refId").anyOf(["beli-baru", "beli-baru-ktp"]).and((p) => p.refType === "draft").toArray();
+      if (cancelled) return;
+      if (raw?.value) {
+        const draft = JSON.parse(raw.value);
+        const valid = Object.entries(f).every(([key, value]) => typeof draft.f?.[key] === typeof value);
+        if (valid) { setF(draft.f); setMethod(["tunai", "qris", "transfer"].includes(draft.method) ? draft.method : "tunai"); setRestored(true); }
+      }
+      setPhotos(images.filter((p) => p.refId === "beli-baru").map((p) => p.blob));
+      setKtp(images.filter((p) => p.refId === "beli-baru-ktp").map((p) => p.blob));
+      setLoaded(true);
+    })().catch(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!loaded || busy || !canSeeMoney(user.role)) return;
+    const timer = setTimeout(() => {
+      if (saving.current) return;
+      void db.transaction("rw", [db.settings, db.photos], async () => {
+        await db.settings.put({ key: "draftBeliBaru", value: f.brand || f.model || f.varian || f.imei || f.kondisi || f.sellerName || f.sellerPhone || f.hargaBeli || f.hargaJual || photos.length || ktp.length ? JSON.stringify({ f, method }) : "" });
+        const keys = await db.photos.where("refId").anyOf(["beli-baru", "beli-baru-ktp"]).and((p) => p.refType === "draft").primaryKeys();
+        await db.photos.bulkDelete(keys);
+        for (const [refId, blobs] of [["beli-baru", photos], ["beli-baru-ktp", ktp]] as const) {
+          for (const blob of blobs) await db.photos.add({ id: uid(), refType: "draft", refId, blob, createdAt: Date.now() });
+        }
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [f, method, photos, ktp, loaded, busy]);
 
   if (!canSeeMoney(user.role)) {
     return (
@@ -51,19 +88,23 @@ export function BeliUnitPage() {
     );
   }
 
-  const imeiOk = f.imei.length >= 14;
+  if (!loaded) return <PageBody>Memuat draft…</PageBody>;
+
+  const imeiOk = luhnValidImei(f.imei);
   const imeiSuspect = f.imei.length === 15 && !luhnValidImei(f.imei);
   const valid =
-    f.brand.trim() && imeiOk && f.hargaBeli > 0 && f.sellerName.trim();
+    f.brand.trim() && imeiOk && f.hargaBeli > 0 && f.sellerName.trim() && photos.length > 0 && ktp.length > 0;
 
   async function doSave() {
+    saving.current = true;
     setBusy(true);
     try {
-      const u = await buyUnit(user, f, photos, ktp[0] ?? null, method);
+      const u = await buyUnit(user, f, photos, ktp[0] ?? null, method, requestId.current);
       toast(`Unit ${u.kode} masuk stok — kas keluar ${rp(f.hargaBeli)}`);
       nav(`/app/stok/unit/${u.id}`, { replace: true });
     } catch (e) {
       toast(e instanceof Error ? e.message : "Gagal menyimpan", "error");
+      saving.current = false;
       setBusy(false);
     }
   }
@@ -90,6 +131,7 @@ export function BeliUnitPage() {
         }
       />
       <PageBody>
+        {restored && <p className="rounded-xl bg-sky-50 p-3 text-sm text-sky-800">Draft pembelian terakhir dipulihkan, termasuk foto yang sudah tersimpan.</p>}
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
           <p className="text-sm font-semibold">Data unit</p>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -122,7 +164,7 @@ export function BeliUnitPage() {
               onChange={(e) => setF({ ...f, kondisi: e.target.value })}
             />
           </Field>
-          <Field label="Foto unit">
+          <Field label="Foto unit" required>
             <PendingPhotos blobs={photos} onChange={setPhotos} />
           </Field>
         </div>
@@ -137,7 +179,7 @@ export function BeliUnitPage() {
               <Input inputMode="tel" value={f.sellerPhone} onChange={(e) => setF({ ...f, sellerPhone: e.target.value })} />
             </Field>
           </div>
-          <Field label="Foto KTP penjual" hint="Wajib untuk keamanan legalitas unit bekas.">
+          <Field label="Foto KTP penjual" required hint="Wajib untuk keamanan legalitas unit bekas.">
             <PendingPhotos blobs={ktp} onChange={(b) => setKtp(b.slice(-1))} label="Foto KTP" />
           </Field>
         </div>

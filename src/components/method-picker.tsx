@@ -19,7 +19,7 @@ export function MethodPicker({
           type="button"
           onClick={() => onChange(m)}
           className={cn(
-            "rounded-lg py-2 transition-colors",
+            "min-h-11 rounded-xl py-2 transition-colors lg:min-h-0 lg:rounded-lg",
             value === m ? "bg-white shadow-sm" : "text-slate-500",
           )}
         >

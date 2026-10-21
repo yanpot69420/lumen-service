@@ -9,6 +9,6 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
  * aplikasi tetap berfungsi penuh secara offline/lokal.
  */
 export const supabase: SupabaseClient | null =
-  url && anonKey ? createClient(url, anonKey) : null;
+  url && anonKey ? createClient(url, anonKey, { auth: { storageKey: "lumen.cloud.session" } }) : null;
 
 export const isCloud = supabase !== null;

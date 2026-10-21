@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, MessageCircle, Printer } from "lucide-react";
-import { db } from "@/db/db";
-import { ticketSisa, ticketTotal } from "@/db/tickets";
-import { getSetting } from "@/db/settings";
-import { rp, fmtDateTime, fmtDate } from "@/lib/format";
-import { waLink } from "@/lib/wa";
 import { Button } from "@/components/ui/button";
 import { TICKET_STATUS_LABEL } from "@/components/ui/status-tag";
+import { db } from "@/db/db";
+import { getSetting } from "@/db/settings";
+import { ticketJasa, ticketSisa, ticketTotal } from "@/db/tickets";
+import { fmtDate, fmtDateTime, rp } from "@/lib/format";
+import { waLink } from "@/lib/wa";
+import { useLiveQuery } from "dexie-react-hooks";
+import { ArrowLeft, MessageCircle, Printer } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 function useStore() {
   const [store, setStore] = useState({
@@ -34,7 +34,7 @@ const Line = () => (
   <div className="my-1 border-t border-dashed border-slate-400" />
 );
 
-function NotaRow({ l, r, bold }: { l: string; r: string; bold?: boolean }) {
+function NotaRow({ l, r, bold }: { l: string; r: string; bold?: boolean; }) {
   return (
     <div
       className={`flex justify-between gap-2 ${bold ? "font-bold" : ""}`}
@@ -110,7 +110,7 @@ export function NotaPrintPage() {
       ),
       `Total: ${rp(ticketTotal(ticket))}`,
       ticket.dp > 0 ? `DP: ${rp(ticket.dp)}` : "",
-      `Sisa: ${rp(ticketSisa(ticket))}`,
+      ticket.status === "diambil" && !ticketSisa(ticket) ? "LUNAS" : `Sisa: ${rp(ticketSisa(ticket))}`,
       store.footer,
     ]
       .filter(Boolean)
@@ -171,7 +171,7 @@ export function NotaPrintPage() {
             <Line />
             <NotaRow
               l={ticket.biayaJasa ? "Biaya jasa" : "Estimasi"}
-              r={rp(ticket.biayaJasa || ticket.estimasi)}
+              r={rp(ticketJasa(ticket))}
             />
             {ticket.partsUsed.map((p, i) => (
               <NotaRow key={i} l={`${p.qty}x ${p.nama}`} r={rp(p.harga * p.qty)} />

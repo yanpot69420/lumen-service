@@ -1,15 +1,15 @@
-import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db, uid } from "@/db/db";
-import type { User } from "@/db/types";
-import { hashPin, newSalt, newRecoveryCode } from "@/auth/pin";
-import { setSetting } from "@/db/settings";
-import { cloudSetup, isCloud } from "@/db/cloud";
-import { usernameSlug, USERNAME_RE } from "@/lib/username";
+import { hashPin, newRecoveryCode, newSalt } from "@/auth/pin";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { cloudSetup, isCloud } from "@/db/cloud";
+import { db, uid } from "@/db/db";
+import { setSetting } from "@/db/settings";
+import type { User } from "@/db/types";
+import { USERNAME_RE, usernameSlug } from "@/lib/username";
+import { useLiveQuery } from "dexie-react-hooks";
+import { useState } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 
 export function SetupPage() {
   const nav = useNavigate();
@@ -17,6 +17,7 @@ export function SetupPage() {
   const userCount = useLiveQuery(() => db.users.count(), []);
   const [storeName, setStoreName] = useState("Lumen Service");
   const [storePhone, setStorePhone] = useState("");
+  const [setupToken, setSetupToken] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [ownerUsername, setOwnerUsername] = useState("");
   const [ownerUserTouched, setOwnerUserTouched] = useState(false);
@@ -74,6 +75,7 @@ export function SetupPage() {
       // lalu data ditarik ke cache lokal. PIN tak pernah dikirim polos ke DB.
       if (isCloud) {
         const r = await cloudSetup({
+          setupToken,
           store: { name: storeName.trim(), phone: storePhone.trim() },
           owner: { name: ownerName.trim(), username: ownerUsername, pin: ownerPin },
           headops: { name: opsName.trim(), username: opsUsername, pin: opsPin },
@@ -113,18 +115,21 @@ export function SetupPage() {
       const recoverySalt = newSalt();
       owner.recoveryHash = await hashPin(code, recoverySalt);
       owner.recoverySalt = recoverySalt;
-      await db.users.bulkAdd([owner, ops]);
-      await setSetting("storeName", storeName.trim());
-      await setSetting("storePhone", storePhone.trim());
-      await db.audit.add({
-        id: uid(),
-        at: now,
-        userId: owner.id,
-        userName: owner.name,
-        action: "setup",
-        entity: "sistem",
-        entityId: "-",
-        summary: `Setup awal: toko "${storeName.trim()}", 2 pengguna dibuat`,
+      await db.transaction("rw", [db.users, db.settings, db.audit], async () => {
+        if (await db.users.count()) throw new Error("Toko sudah di-setup dari tab lain");
+        await db.users.bulkAdd([owner, ops]);
+        await setSetting("storeName", storeName.trim());
+        await setSetting("storePhone", storePhone.trim());
+        await db.audit.add({
+          id: uid(),
+          at: now,
+          userId: owner.id,
+          userName: owner.name,
+          action: "setup",
+          entity: "sistem",
+          entityId: "-",
+          summary: `Setup awal: toko "${storeName.trim()}", 2 pengguna dibuat`,
+        });
       });
       toast("Setup selesai");
       setRecoveryCode(code);
@@ -149,6 +154,7 @@ export function SetupPage() {
       </div>
 
       <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+        {isCloud && <Field label="Token setup cloud" required hint="Diberikan administrator saat menyiapkan server."><Input type="password" value={setupToken} onChange={(e) => setSetupToken(e.target.value)} /></Field>}
         <Field label="Nama toko" required>
           <Input value={storeName} onChange={(e) => setStoreName(e.target.value)} />
         </Field>

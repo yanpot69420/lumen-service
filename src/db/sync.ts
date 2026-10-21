@@ -1,569 +1,193 @@
-import { useEffect, useState } from "react";
-import { db } from "./db";
-import { supabase, isCloud } from "./supabase";
-import type {
-  AuditEntry,
-  CashEntry,
-  Correction,
-  DayClose,
-  Part,
-  Setting,
-  Ticket,
-  Unit,
-  User,
-} from "./types";
+import { liveQuery } from "dexie";
+import { useSyncExternalStore } from "react";
+import { db, markRemoteWrite, type OutboxEntry } from "./db";
+import { isCloud, supabase } from "./supabase";
+import { M } from "./sync-mappers";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-// ---- Konversi nilai ----
-const iso = (ms: number) => new Date(ms).toISOString();
-const ms = (s: string | null | undefined) => (s ? Date.parse(s) : undefined);
-const b2n = (b: unknown): 1 | 0 => (b ? 1 : 0);
-const opt = <T>(v: T | null | undefined) => (v === null ? undefined : v);
-
-interface Mapper {
-  remote: string; // nama tabel Supabase
-  toRemote: (row: any) => any;
-  toLocal: (row: any) => any;
-}
-
-// ---- Registry pemetaan tiap tabel Dexie → Supabase ----
-const M: Record<string, Mapper> = {
-  users: {
-    remote: "users",
-    toRemote: (u: User) => ({
-      id: u.id,
-      name: u.name,
-      username: u.username,
-      role: u.role,
-      pin_hash: u.pinHash,
-      pin_ver: u.pinVer ?? 2,
-      salt: u.salt,
-      recovery_hash: u.recoveryHash ?? null,
-      recovery_salt: u.recoverySalt ?? null,
-      active: !!u.active,
-      created_at: iso(u.createdAt),
-    }),
-    toLocal: (r: any): User => ({
-      id: r.id,
-      name: r.name,
-      username: r.username,
-      role: r.role,
-      pinHash: r.pin_hash,
-      pinVer: r.pin_ver ?? 2,
-      salt: r.salt,
-      recoveryHash: opt(r.recovery_hash),
-      recoverySalt: opt(r.recovery_salt),
-      active: b2n(r.active),
-      createdAt: ms(r.created_at) ?? Date.now(),
-    }),
-  },
-  settings: {
-    remote: "settings",
-    toRemote: (s: Setting) => ({ key: s.key, value: s.value }),
-    toLocal: (r: any): Setting => ({ key: r.key, value: r.value }),
-  },
-  tickets: {
-    remote: "tickets",
-    toRemote: (t: Ticket) => ({
-      id: t.id,
-      no_nota: t.noNota,
-      garansi_dari: t.garansiDari ?? null,
-      piutang: t.piutang ?? 0,
-      customer_name: t.customerName,
-      phone: t.phone,
-      brand: t.brand,
-      model: t.model,
-      keluhan: t.keluhan,
-      kelengkapan: t.kelengkapan,
-      estimasi: t.estimasi,
-      biaya_jasa: t.biayaJasa,
-      dp: t.dp,
-      status: t.status,
-      history: t.history,
-      parts_used: t.partsUsed,
-      created_by: t.createdBy,
-      created_at: iso(t.createdAt),
-      updated_at: iso(t.updatedAt),
-    }),
-    toLocal: (r: any): Ticket => ({
-      id: r.id,
-      noNota: r.no_nota,
-      garansiDari: opt(r.garansi_dari),
-      piutang: r.piutang ?? 0,
-      customerName: r.customer_name,
-      phone: r.phone,
-      brand: r.brand,
-      model: r.model,
-      keluhan: r.keluhan,
-      kelengkapan: r.kelengkapan ?? [],
-      estimasi: r.estimasi,
-      biayaJasa: r.biaya_jasa,
-      dp: r.dp,
-      status: r.status,
-      history: r.history ?? [],
-      partsUsed: r.parts_used ?? [],
-      createdAt: ms(r.created_at) ?? Date.now(),
-      updatedAt: ms(r.updated_at) ?? Date.now(),
-      createdBy: r.created_by,
-    }),
-  },
-  units: {
-    remote: "units",
-    toRemote: (u: Unit) => ({
-      id: u.id,
-      kode: u.kode,
-      brand: u.brand,
-      model: u.model,
-      varian: u.varian,
-      imei: u.imei,
-      kondisi: u.kondisi,
-      harga_beli: u.hargaBeli,
-      harga_jual: u.hargaJual,
-      status: u.status,
-      seller_name: u.sellerName,
-      seller_phone: u.sellerPhone,
-      garansi_hari: u.garansiHari,
-      bought_at: iso(u.boughtAt),
-      sold_at: u.soldAt ? iso(u.soldAt) : null,
-      sold_price: u.soldPrice ?? null,
-      buyer_name: u.buyerName ?? null,
-      buyer_phone: u.buyerPhone ?? null,
-      created_by: u.createdBy,
-    }),
-    toLocal: (r: any): Unit => ({
-      id: r.id,
-      kode: r.kode,
-      brand: r.brand,
-      model: r.model,
-      varian: r.varian,
-      imei: r.imei,
-      kondisi: r.kondisi,
-      hargaBeli: r.harga_beli,
-      hargaJual: r.harga_jual,
-      status: r.status,
-      sellerName: r.seller_name,
-      sellerPhone: r.seller_phone,
-      garansiHari: r.garansi_hari,
-      boughtAt: ms(r.bought_at) ?? Date.now(),
-      soldAt: ms(r.sold_at),
-      soldPrice: opt(r.sold_price),
-      buyerName: opt(r.buyer_name),
-      buyerPhone: opt(r.buyer_phone),
-      createdBy: r.created_by,
-    }),
-  },
-  parts: {
-    remote: "parts",
-    toRemote: (p: Part) => ({
-      id: p.id,
-      nama: p.nama,
-      kategori: p.kategori,
-      stok: p.stok,
-      harga_modal: p.hargaModal,
-      harga_jual: p.hargaJual,
-      min_stok: p.minStok,
-    }),
-    toLocal: (r: any): Part => ({
-      id: r.id,
-      nama: r.nama,
-      kategori: r.kategori,
-      stok: r.stok,
-      hargaModal: r.harga_modal,
-      hargaJual: r.harga_jual,
-      minStok: r.min_stok,
-    }),
-  },
-  cash: {
-    remote: "cash_entries",
-    toRemote: (c: CashEntry) => ({
-      id: c.id,
-      at: iso(c.at),
-      day_key: c.dayKey,
-      type: c.type,
-      category: c.category,
-      method: c.method ?? "tunai",
-      amount: c.amount,
-      note: c.note,
-      ref_type: c.refType ?? null,
-      ref_id: c.refId ?? null,
-      meta: c.meta ?? null,
-      by_user: c.by,
-      by_name: c.byName,
-      locked: !!c.locked,
-      voided: !!c.voided,
-    }),
-    toLocal: (r: any): CashEntry => ({
-      id: r.id,
-      at: ms(r.at) ?? Date.now(),
-      dayKey: r.day_key,
-      type: r.type,
-      category: r.category,
-      method: r.method ?? "tunai",
-      amount: r.amount,
-      note: r.note,
-      refType: opt(r.ref_type),
-      refId: opt(r.ref_id),
-      meta: opt(r.meta),
-      by: r.by_user,
-      byName: r.by_name,
-      locked: b2n(r.locked),
-      voided: b2n(r.voided),
-    }),
-  },
-  dayCloses: {
-    remote: "day_closes",
-    toRemote: (d: DayClose) => ({
-      day_key: d.dayKey,
-      expected: d.expected,
-      counted: d.counted,
-      selisih: d.selisih,
-      note: d.note,
-      closed_by: d.closedBy,
-      closed_by_name: d.closedByName,
-      closed_at: iso(d.closedAt),
-    }),
-    toLocal: (r: any): DayClose => ({
-      dayKey: r.day_key,
-      expected: r.expected,
-      counted: r.counted,
-      selisih: r.selisih,
-      note: r.note,
-      closedBy: r.closed_by,
-      closedByName: r.closed_by_name,
-      closedAt: ms(r.closed_at) ?? Date.now(),
-    }),
-  },
-  corrections: {
-    remote: "corrections",
-    toRemote: (k: Correction) => ({
-      id: k.id,
-      at: iso(k.at),
-      entity: k.entity,
-      entity_id: k.entityId,
-      reason: k.reason,
-      before_data: k.before,
-      after_data: k.after,
-      requested_by: k.requestedBy,
-      requested_by_name: k.requestedByName,
-      status: k.status,
-      decided_by: k.decidedBy ?? null,
-      decided_by_name: k.decidedByName ?? null,
-      decided_at: k.decidedAt ? iso(k.decidedAt) : null,
-    }),
-    toLocal: (r: any): Correction => ({
-      id: r.id,
-      at: ms(r.at) ?? Date.now(),
-      entity: r.entity,
-      entityId: r.entity_id,
-      reason: r.reason,
-      before: r.before_data,
-      after: r.after_data,
-      requestedBy: r.requested_by,
-      requestedByName: r.requested_by_name,
-      status: r.status,
-      decidedBy: opt(r.decided_by),
-      decidedByName: opt(r.decided_by_name),
-      decidedAt: ms(r.decided_at),
-    }),
-  },
-  audit: {
-    remote: "audit_log",
-    toRemote: (a: AuditEntry) => ({
-      id: a.id,
-      at: iso(a.at),
-      user_id: a.userId,
-      user_name: a.userName,
-      action: a.action,
-      entity: a.entity,
-      entity_id: a.entityId,
-      summary: a.summary,
-    }),
-    toLocal: (r: any): AuditEntry => ({
-      id: r.id,
-      at: ms(r.at) ?? Date.now(),
-      userId: r.user_id,
-      userName: r.user_name,
-      action: r.action,
-      entity: r.entity,
-      entityId: r.entity_id,
-      summary: r.summary,
-    }),
-  },
-};
-
-// Urutan penting: users & settings lebih dulu (referensi FK), audit terakhir.
-const ORDER = [
-  "users",
-  "settings",
-  "parts",
-  "units",
-  "tickets",
-  "cash",
-  "dayCloses",
-  "corrections",
-  "audit",
-];
-
-// ---- Capture perubahan lokal → outbox (via Dexie hooks) ----
-// Penghitung (bukan boolean) agar aman saat beberapa applyRemote berjalan paralel.
-let applyDepth = 0;
-const pending = new Map<string, Set<string>>();
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-
-function capture(table: string, key: unknown) {
-  if (applyDepth > 0 || !isCloud || key == null) return;
-  if (!pending.has(table)) pending.set(table, new Set());
-  pending.get(table)!.add(String(key));
-  if (!flushTimer) flushTimer = setTimeout(flushCapture, 0);
-}
-
-async function flushCapture() {
-  flushTimer = null;
-  const entries: { table: string; key: string; at: number }[] = [];
-  for (const [table, keys] of pending)
-    for (const key of keys) entries.push({ table, key, at: Date.now() });
-  pending.clear();
-  if (entries.length) {
-    await db.outbox.bulkAdd(entries as any);
-    scheduleSync();
-  }
-}
-
-let hooksReady = false;
-function registerHooks() {
-  if (hooksReady) return;
-  hooksReady = true;
-  for (const name of ORDER) {
-    const t = db.table(name);
-    t.hook("creating", (primKey: any, obj: any) => {
-      capture(name, primKey ?? obj?.id ?? obj?.key ?? obj?.dayKey);
-    });
-    t.hook("updating", (_mods: any, primKey: any) => {
-      capture(name, primKey);
-    });
-  }
-}
-
-/** Terapkan baris dari cloud ke Dexie tanpa memicu outbox (hindari loop). */
-async function applyRemote(fn: () => Promise<void>) {
-  applyDepth++;
-  try {
-    await fn();
-  } finally {
-    applyDepth--;
-  }
-}
-
-// ---- Push (drain outbox) ----
-async function hasSession(): Promise<boolean> {
-  if (!supabase) return false;
-  const { data } = await supabase.auth.getSession();
-  return !!data.session;
-}
-
-async function pushBatch(): Promise<boolean> {
-  if (!supabase) return true;
-  const batch = await db.outbox.orderBy("seq").limit(300).toArray();
-  if (!batch.length) return true;
-
-  const byTable = new Map<string, Map<string, number[]>>();
-  for (const e of batch) {
-    if (!byTable.has(e.table)) byTable.set(e.table, new Map());
-    const km = byTable.get(e.table)!;
-    if (!km.has(e.key)) km.set(e.key, []);
-    km.get(e.key)!.push(e.seq!);
-  }
-
-  let allOk = true;
-  for (const table of ORDER) {
-    const km = byTable.get(table);
-    if (!km) continue;
-    const keys = [...km.keys()];
-    const rows = await db.table(table).bulkGet(keys);
-    const remoteRows = rows
-      .filter((r) => r != null)
-      .map((r) => M[table].toRemote(r));
-    if (remoteRows.length) {
-      // audit_log & day_closes = append-only (tanpa policy UPDATE): pakai
-      // insert-abaikan-duplikat agar tak butuh izin UPDATE (hindari 403).
-      const appendOnly = table === "audit" || table === "dayCloses";
-      const { error } = await supabase
-        .from(M[table].remote)
-        .upsert(remoteRows, appendOnly ? { ignoreDuplicates: true } : {});
-      if (error) {
-        console.warn("[sync] push gagal", table, error.message);
-        allOk = false;
-        continue; // jangan blokir tabel lain
-      }
-    }
-    const seqs = [...km.values()].flat();
-    await db.outbox.bulkDelete(seqs);
-  }
-  return allOk;
-}
-
-// ---- Pull ----
-async function pullOne(name: string): Promise<void> {
-  if (!supabase) return;
-  const reg = M[name];
-  let query = supabase.from(reg.remote).select("*");
-  if (name === "audit")
-    query = query.order("at", { ascending: false }).limit(1000);
-  const { data, error } = await query;
-  if (error) {
-    console.warn("[sync] pull gagal", name, error.message);
-    return;
-  }
-  if (data && data.length) {
-    await applyRemote(async () => {
-      await db.table(name).bulkPut(data.map(reg.toLocal));
-    });
-  }
-}
-
-// Tarik banyak tabel secara paralel (tabel independen → lebih cepat).
-async function pullTables(names: string[]): Promise<void> {
-  if (!supabase) return;
-  await Promise.all(names.map(pullOne));
-}
-
-/** Tarik data inti (users + settings) — dipakai saat login agar cache siap. */
-export async function pullCore(): Promise<void> {
-  await pullTables(["users", "settings"]);
-}
-
-/** Kosongkan seluruh cache lokal + antrean (dipakai saat cloud fresh/di-reset). */
-export async function resetLocalCache(): Promise<void> {
-  await db.transaction(
-    "rw",
-    [
-      db.users,
-      db.settings,
-      db.tickets,
-      db.units,
-      db.parts,
-      db.cash,
-      db.dayCloses,
-      db.corrections,
-      db.audit,
-      db.photos,
-      db.outbox,
-    ],
-    async () => {
-      await Promise.all([
-        db.users.clear(),
-        db.settings.clear(),
-        db.tickets.clear(),
-        db.units.clear(),
-        db.parts.clear(),
-        db.cash.clear(),
-        db.dayCloses.clear(),
-        db.corrections.clear(),
-        db.audit.clear(),
-        db.photos.clear(),
-        db.outbox.clear(),
-      ]);
-    },
-  );
-}
-
-// ---- Status ----
 export type SyncState = "off" | "idle" | "syncing" | "error" | "offline";
-interface Status {
-  state: SyncState;
-  pending: number;
-  lastSync: number;
-}
+interface Status { state: SyncState; pending: number; lastSync: number; error?: string; }
 let status: Status = { state: "off", pending: 0, lastSync: 0 };
 const listeners = new Set<() => void>();
-function setStatus(p: Partial<Status>) {
-  status = { ...status, ...p };
-  listeners.forEach((l) => l());
+function setStatus(patch: Partial<Status>) { status = { ...status, ...patch }; listeners.forEach((fn) => fn()); }
+const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
+export function useSyncStatus() { return useSyncExternalStore(subscribe, () => status); }
+export const getSyncStatus = () => status;
+const ORDER = ["users", "settings", "customers", "parts", "units", "tickets", "cash", "dayCloses", "corrections", "audit", "photos"];
+function cloudError(message: string) {
+  if (/Staf tidak aktif|Sesi telah berakhir|JWT expired/i.test(message) && typeof window !== "undefined") window.dispatchEvent(new Event("lumen:session-expired"));
+  return new Error(message);
 }
 
-export function useSyncStatus(): Status {
-  const [, force] = useState(0);
-  useEffect(() => {
-    const l = () => force((x) => x + 1);
-    listeners.add(l);
-    return () => {
-      listeners.delete(l);
-    };
-  }, []);
-  return status;
+export function coalesceChanges(entries: OutboxEntry[]) {
+  const rows = new Map<string, OutboxEntry>();
+  for (const e of entries) {
+    const key = `${e.table}:${e.key}`;
+    const prior = rows.get(key);
+    rows.set(key, prior ? { ...e, before: prior.before } : e);
+  }
+  return [...rows.values()];
 }
 
-// ---- Engine ----
+export async function applyRemoteRows(name: string, remote: Record<string, unknown>[]) {
+  const records: Record<string, unknown>[] = [];
+  for (const row of remote) {
+    if (name === "photos" && !row.deleted) {
+      const local = await db.photos.get(String(row.id));
+      if (local && local.remotePath === row.path && local.blob) { records.push({ ...row, blob: local.blob }); continue; }
+      const { data, error } = await supabase!.storage.from("photos").download(String(row.path));
+      if (error || !data) throw new Error(`Foto belum terunduh: ${error?.message}`);
+      records.push({ ...row, blob: data });
+    } else records.push(row);
+  }
+  await db.transaction("rw", [db.table(name), db.outbox], async () => {
+    markRemoteWrite();
+    const pending = new Set((await db.outbox.where("table").equals(name).toArray()).map((r) => r.key));
+    for (const record of records) {
+      const local = { ...M[name].toLocal(record), _version: record.revision ?? 1 };
+      const key = String(local.id ?? local.key ?? local.dayKey);
+      if (pending.has(key)) continue;
+      if (name === "photos" && record.deleted) await db.photos.delete(key);
+      else await db.table(name).put(name === "photos" ? { ...local, blob: record.blob } : local);
+    }
+  });
+}
+
+async function pullOne(name: string) {
+  if (!supabase) return;
+  let after: string | null = null;
+  do {
+    const result: { data: unknown; error: { message: string; } | null; } = await supabase.rpc("sync_page", { p_table: M[name].remote, p_after: after, p_limit: 200 });
+    const data = result.data as { rows: Record<string, unknown>[]; next?: string | null; } | null;
+    const error = result.error;
+    if (error) throw cloudError(`Gagal mengambil ${name}: ${error.message}`);
+    if (!data || !Array.isArray(data.rows)) throw new Error("Versi server belum cocok. Jalankan migrasi keamanan cloud.");
+    await applyRemoteRows(name, data.rows);
+    if (data.next && data.next === after) throw new Error("Cursor sinkronisasi tidak bergerak");
+    after = data.next ?? null;
+  } while (after);
+}
+export async function pullCore() { for (const name of ["users", "settings"]) await pullOne(name); }
+
+/** Claim before copying work out of IndexedDB. This also serializes with Undo
+ * in browsers without cross-tab Web Locks; a stale copy can never be sent. */
+export async function claimSyncBatch(): Promise<{ batch: OutboxEntry[]; retryAt?: number; }> {
+  return db.transaction("rw", db.outbox, async () => {
+    const first = await db.outbox.orderBy("seq").first();
+    if (!first) return { batch: [] };
+    if (!first.batchId) throw new Error("Ada antrean dari versi lama. Unduh backup sebelum migrasi antrean; data lokal tetap disimpan.");
+    const batch = await db.outbox.where("batchId").equals(first.batchId).sortBy("seq");
+    const notBefore = Math.max(...batch.map((entry) => entry.notBefore ?? 0));
+    if (notBefore > Date.now()) return { batch: [], retryAt: notBefore };
+    for (const entry of batch) await db.outbox.update(entry.seq!, { inFlight: true });
+    return { batch };
+  });
+}
+
+async function pushBatch() {
+  if (!supabase) return false;
+  const { batch, retryAt } = await claimSyncBatch();
+  if (retryAt) scheduleSync(retryAt - Date.now());
+  if (!batch.length) return false;
+  const first = batch[0];
+  const rows = coalesceChanges(batch);
+  const changes = [];
+  for (const e of rows) {
+    if (!M[e.table] || e.before === undefined || e.payload === undefined) throw new Error("Antrean lama perlu diperiksa; data tidak dihapus.");
+    if (e.table === "photos" && e.payload) {
+      const photo = e.payload;
+      const session = await supabase.auth.getSession();
+      const path = `${session.data.session!.user.id}/${e.key}.jpg`;
+      e.payload = { ...photo, remotePath: path };
+      const { error } = await supabase.storage.from("photos").upload(path, photo.blob as Blob, { contentType: "image/jpeg", upsert: false });
+      if (error && !["409", "Duplicate"].includes(String((error as { statusCode?: string; }).statusCode)) && !error.message.toLowerCase().includes("already exists")) throw new Error(`Unggah foto gagal: ${error.message}`);
+    }
+    changes.push({ table: M[e.table].remote, key: e.key, expected_version: e.before?._version ?? 0, row: e.payload ? M[e.table].toRemote(e.payload) : null });
+  }
+  const { data, error } = await supabase.rpc("apply_changes", { p_batch_id: first.batchId, p_changes: changes });
+  if (error) throw cloudError(`Perubahan belum terkirim: ${error.message}`);
+  if (!Array.isArray(data)) throw new Error("Server tidak mengakui transaksi; antrean tetap disimpan");
+  await db.transaction("rw", [db.outbox, ...ORDER.map((n) => db.table(n))], async () => {
+    markRemoteWrite();
+    await db.outbox.bulkDelete(batch.map((e) => e.seq!));
+    for (const ack of data) {
+      const table = ORDER.find((n) => M[n].remote === ack.table);
+      if (!table) continue;
+      const remaining = await db.outbox.where("table").equals(table).filter((e) => e.key === ack.key).toArray();
+      for (const entry of remaining) {
+        await db.outbox.update(entry.seq!, { before: entry.before ? { ...entry.before, _version: ack.revision } : entry.before });
+      }
+      await db.table(table).update(ack.key, { _version: ack.revision });
+    }
+  });
+  return true;
+}
+
+/** Older releases stored photos only on the device. Queue them without
+ * replacing any pending work or claiming that they are already backed up. */
+export async function queueLegacyPhotos() {
+  await db.transaction("rw", [db.photos, db.outbox], async () => {
+    const pending = new Set((await db.outbox.where("table").equals("photos").toArray()).map((e) => e.key));
+    for (const photo of await db.photos.toArray()) {
+      if (photo.refType === "draft" || photo._version || pending.has(photo.id)) continue;
+      await db.outbox.add({ table: "photos", key: photo.id, at: Date.now(), batchId: crypto.randomUUID(), before: null, payload: { ...photo } });
+    }
+  });
+}
+
 let syncing = false;
+let started = false;
 async function tick() {
   if (syncing || !supabase) return;
-  if (typeof navigator !== "undefined" && !navigator.onLine) {
-    setStatus({ state: "offline", pending: await db.outbox.count() });
-    return;
-  }
-  if (!(await hasSession())) return;
   syncing = true;
-  setStatus({ state: "syncing" });
   try {
-    // Self-heal: antrean membengkak abnormal (indikasi bug/loop) → bersihkan
-    // agar tak membanjiri cloud. Data inti tetap aman di cloud.
-    if ((await db.outbox.count()) > 2000) {
-      console.warn("[sync] antrean abnormal besar, dibersihkan");
-      await db.outbox.clear();
-    }
-    let ok = true;
+    setStatus({ pending: await db.outbox.count() });
+    if (!navigator.onLine) { setStatus({ state: "offline" }); return; }
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) { setStatus({ state: "off" }); return; }
+    setStatus({ state: "syncing", error: undefined });
+    await queueLegacyPhotos();
+    // One RPC per native transaction: cash, stock, ticket and audit commit together.
     let guard = 0;
-    while (ok && (await db.outbox.count()) > 0 && guard++ < 30) {
-      ok = await pushBatch();
-    }
-    await pullTables(ORDER);
-    setStatus({
-      state: ok ? "idle" : "error",
-      pending: await db.outbox.count(),
-      lastSync: Date.now(),
-    });
+    while (guard++ < 100 && await pushBatch()) { /* bounded work, never discard */ }
+    for (const name of ORDER) await pullOne(name);
+    const pending = await db.outbox.count();
+    setStatus({ state: pending ? "syncing" : "idle", pending, lastSync: Date.now() });
+    if (pending) scheduleSync();
   } catch (e) {
-    console.warn("[sync] tick error", e);
-    setStatus({ state: "error", pending: await db.outbox.count() });
-  } finally {
-    syncing = false;
-  }
+    setStatus({ state: "error", pending: await db.outbox.count(), error: e instanceof Error ? e.message : "Sinkronisasi gagal" });
+  } finally { syncing = false; }
 }
 
-// Rem laju: minimal ~2 detik antar sync, dan koaleskan panggilan beruntun
-// (mencegah badai request bila ada perubahan/loop tak terduga).
-const MIN_SYNC_GAP = 2000;
-let lastRun = 0;
-let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-export function scheduleSync() {
-  if (pendingTimer) return; // sudah dijadwalkan
-  const wait = Math.max(400, MIN_SYNC_GAP - (Date.now() - lastRun));
-  pendingTimer = setTimeout(async () => {
-    pendingTimer = null;
-    lastRun = Date.now();
-    await tick();
-  }, wait);
+export async function syncNow() {
+  if (typeof navigator !== "undefined" && navigator.locks) {
+    await navigator.locks.request("lumen-cloud-sync", { ifAvailable: true }, async (lock) => { if (lock) await tick(); });
+  } else await tick();
 }
-
-let started = false;
+let timer: ReturnType<typeof setTimeout> | null = null;
+let timerAt = 0;
 let interval: ReturnType<typeof setInterval> | null = null;
+let observer: { unsubscribe(): void; } | null = null;
+export function scheduleSync(delayOrEvent: number | Event = 2000) {
+  if (!started) return;
+  const delay = typeof delayOrEvent === "number" ? delayOrEvent : 2000;
+  const deadline = Date.now() + delay;
+  if (timer && timerAt <= deadline) return;
+  if (timer) clearTimeout(timer);
+  timerAt = deadline;
+  timer = setTimeout(() => { timer = null; timerAt = 0; void syncNow(); }, Math.max(1, delay));
+}
 export function startSync() {
   if (started || !isCloud) return;
-  registerHooks();
   started = true;
-  scheduleSync();
+  observer = liveQuery(() => db.outbox.count()).subscribe(() => scheduleSync());
   interval = setInterval(scheduleSync, 30_000);
-  window.addEventListener("focus", scheduleSync);
-  window.addEventListener("online", scheduleSync);
+  window.addEventListener("focus", scheduleSync); window.addEventListener("online", scheduleSync);
+  scheduleSync();
 }
 export function stopSync() {
   started = false;
-  if (interval) clearInterval(interval);
-  window.removeEventListener("focus", scheduleSync);
-  window.removeEventListener("online", scheduleSync);
+  if (timer) clearTimeout(timer); if (interval) clearInterval(interval);
+  timer = null; interval = null; observer?.unsubscribe(); observer = null;
+  window.removeEventListener("focus", scheduleSync); window.removeEventListener("online", scheduleSync);
   setStatus({ state: "off" });
 }
-
-// Daftarkan hooks sedini mungkin (sebelum tulisan pertama) di mode cloud.
-if (isCloud) registerHooks();

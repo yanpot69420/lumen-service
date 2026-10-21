@@ -1,51 +1,46 @@
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Search } from "lucide-react";
-import { db } from "@/db/db";
-import type { Ticket } from "@/db/types";
-import { ticketSisa, ticketTotal } from "@/db/tickets";
-import { rp, fmtDateTime } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
-import { TicketStatusTag } from "@/components/ui/status-tag";
 import { Row } from "@/components/ui/misc";
+import { TicketStatusTag } from "@/components/ui/status-tag";
+import { findPublicStatus, type PublicStatus } from "@/db/public";
+import { isCloud } from "@/db/supabase";
+import { fmtDateTime, rp } from "@/lib/format";
+import { Search } from "lucide-react";
+import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PublicFooter, PublicNav } from "./landing";
 
 export function CekStatusPage() {
   const [params] = useSearchParams();
   const [nota, setNota] = useState(params.get("nota") ?? "");
-  const [result, setResult] = useState<Ticket | null | "notfound">(null);
+  const [result, setResult] = useState<PublicStatus | null | "notfound">(null);
   const [busy, setBusy] = useState(false);
+  const [suffix, setSuffix] = useState("");
+  const [error, setError] = useState("");
 
   async function cari(no: string) {
     const clean = no.trim().toUpperCase();
-    if (!clean) return;
+    if (!clean || suffix.length !== 4) return;
     setBusy(true);
-    const t = await db.tickets.where("noNota").equals(clean).first();
-    setResult(t ?? "notfound");
-    setBusy(false);
+    setError("");
+    try { setResult((await findPublicStatus(clean, suffix)) ?? "notfound"); }
+    catch (e) { setError(e instanceof Error ? e.message : "Pencarian gagal"); }
+    finally { setBusy(false); }
   }
-
-  useEffect(() => {
-    if (params.get("nota")) cari(params.get("nota")!);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <div className="flex min-h-dvh flex-col bg-slate-50">
       <PublicNav active="cek" />
       <main className="mx-auto w-full max-w-lg flex-1 space-y-4 px-4 py-10">
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <b>Segera aktif.</b> Cek status online sedang disiapkan — untuk saat
-          ini silakan tanyakan status servis Anda via WhatsApp konter dengan
-          menyebutkan nomor nota.
-        </div>
+        {!isCloud && <p className="text-xs text-slate-500">Pratinjau lokal — pencarian memakai data perangkat ini.</p>}
+        {error && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{error}</p>}
         <div className="text-center">
           <h1 className="text-xl font-bold">Cek Status Servis</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Masukkan nomor nota yang tertera di nota servis Anda.
+            Masukkan nomor nota dan 4 digit terakhir nomor WA yang dicatat saat servis.
           </p>
         </div>
+        <Input aria-label="4 digit terakhir nomor WA pelanggan" placeholder="4 digit terakhir nomor WA" inputMode="numeric" maxLength={4} value={suffix} onChange={(e) => setSuffix(e.target.value.replace(/\D/g, ""))} />
         <div className="flex gap-2">
           <Input
             placeholder="LS-2607-0001"
@@ -54,7 +49,7 @@ export function CekStatusPage() {
             onKeyDown={(e) => e.key === "Enter" && cari(nota)}
             className="font-mono uppercase"
           />
-          <Button disabled={busy || !nota.trim()} onClick={() => cari(nota)}>
+          <Button disabled={busy || !nota.trim() || suffix.length !== 4} onClick={() => cari(nota)}>
             <Search /> Cek
           </Button>
         </div>
@@ -75,23 +70,21 @@ export function CekStatusPage() {
                 <p className="mt-1 font-bold">
                   {result.brand} {result.model}
                 </p>
-                <p className="text-sm text-slate-500">{result.keluhan}</p>
+
               </div>
               <TicketStatusTag status={result.status} />
             </div>
             <div className="mt-4 border-t border-slate-100 pt-2">
-              <Row label={result.biayaJasa ? "Biaya" : "Estimasi biaya"}>
-                {rp(ticketTotal(result))}
+              <Row label={"Total biaya / estimasi"}>
+                {rp(result.total)}
               </Row>
               {result.dp > 0 && (
                 <>
                   <Row label="DP dibayar">{rp(result.dp)}</Row>
-                  <Row label="Sisa saat pengambilan" strong>
-                    {rp(ticketSisa(result))}
-                  </Row>
                 </>
               )}
             </div>
+            <Row label={result.status === "diambil" ? "Piutang / sisa bayar" : "Sisa bayar"} strong>{rp(result.sisa)}</Row>
             <ol className="mt-4 space-y-3 border-t border-slate-100 pt-4">
               {[...result.history].reverse().map((h, i) => (
                 <li key={i} className="flex items-center gap-3 text-sm">

@@ -1,0 +1,182 @@
+[
+  {
+    "id": "60fd4f42-b0c7-59a9-be2c-4ca0de63e4e4",
+    "nama": "LCD Samsung Galaxy A12",
+    "minStok": 2,
+    "brand": "Samsung"
+  },
+  {
+    "id": "ec559236-12d7-5ae2-946b-834ed210a086",
+    "nama": "LCD Samsung Galaxy A13",
+    "minStok": 2,
+    "brand": "Samsung"
+  },
+  {
+    "id": "298a63d3-a570-5db5-ace6-9c32278d014a",
+    "nama": "LCD Samsung Galaxy A14",
+    "minStok": 2,
+    "brand": "Samsung"
+  },
+  {
+    "id": "91be8a5d-519f-50c1-a28f-50ddebc03a4e",
+    "nama": "LCD Redmi 9A",
+    "minStok": 2,
+    "brand": "Xiaomi"
+  },
+  {
+    "id": "6173edd7-04f4-53ae-81e5-81c21692ad11",
+    "nama": "LCD Redmi Note 10",
+    "minStok": 2,
+    "brand": "Xiaomi"
+  },
+  {
+    "id": "3e7b3e60-7e20-5691-9089-d55bfb29c85e",
+    "nama": "LCD OPPO A16",
+    "minStok": 2,
+    "brand": "Oppo"
+  },
+  {
+    "id": "99e5ae44-0b39-56e9-b40e-392eaaa67b77",
+    "nama": "LCD OPPO A54",
+    "minStok": 2,
+    "brand": "Oppo"
+  },
+  {
+    "id": "f663b245-43ca-5c3e-bd47-28ec1a88774f",
+    "nama": "LCD vivo Y12",
+    "minStok": 2,
+    "brand": "Vivo"
+  },
+  {
+    "id": "8172d4d7-5fec-5925-ac37-3618a24b11c2",
+    "nama": "LCD vivo Y20",
+    "minStok": 2,
+    "brand": "Vivo"
+  },
+  {
+    "id": "20eb34aa-8bc0-5111-8542-721ec93e1341",
+    "nama": "LCD iPhone 11",
+    "minStok": 2,
+    "brand": "Apple"
+  },
+  {
+    "id": "b7417ac4-d258-5229-b525-4f72ec60590f",
+    "nama": "Baterai Samsung Galaxy A12",
+    "minStok": 2,
+    "brand": "Samsung"
+  },
+  {
+    "id": "00213b3d-e78f-5480-beba-b37f5c05a3d6",
+    "nama": "Baterai Samsung Galaxy A13",
+    "minStok": 2,
+    "brand": "Samsung"
+  },
+  {
+    "id": "ceef8e6f-3c2b-5644-b9f9-c9ac0276f452",
+    "nama": "Baterai Redmi 9A",
+    "minStok": 2,
+    "brand": "Xiaomi"
+  },
+  {
+    "id": "525447b1-73c6-5823-a680-cd3565e3cf55",
+    "nama": "Baterai Redmi Note 10",
+    "minStok": 2,
+    "brand": "Xiaomi"
+  },
+  {
+    "id": "c98c4042-1bdf-52c7-9177-8b8c30685a18",
+    "nama": "Baterai OPPO A16",
+    "minStok": 2,
+    "brand": "Oppo"
+  },
+  {
+    "id": "a32ea374-ea92-587d-9717-36ed834f98e2",
+    "nama": "Baterai OPPO A54",
+    "minStok": 2,
+    "brand": "Oppo"
+  },
+  {
+    "id": "a8231288-56a2-5150-9f44-85036a5991e5",
+    "nama": "Baterai vivo Y12",
+    "minStok": 2,
+    "brand": "Vivo"
+  },
+  {
+    "id": "afba5b73-3afe-5229-9107-4e4644091b97",
+    "nama": "Baterai vivo Y20",
+    "minStok": 2,
+    "brand": "Vivo"
+  },
+  {
+    "id": "e8e04453-2f18-5ab2-a24c-47c4c0e1ac92",
+    "nama": "Baterai iPhone 11",
+    "minStok": 2,
+    "brand": "Apple"
+  },
+  {
+    "id": "876d4fcb-8822-52dc-aee2-bf400f0b9d13",
+    "nama": "Baterai iPhone XR",
+    "minStok": 2,
+    "brand": "Apple"
+  },
+  {
+    "id": "0e8dc2db-d124-5333-800a-8a3ad51be558",
+    "nama": "Flexibel charger Samsung Galaxy A12",
+    "minStok": 2,
+    "brand": "Samsung"
+  },
+  {
+    "id": "1a59e0c3-218e-5cc0-9504-9a8bb1485506",
+    "nama": "Flexibel charger Redmi 9A",
+    "minStok": 2,
+    "brand": "Xiaomi"
+  },
+  {
+    "id": "98050806-dda5-5c57-9a9e-dc7205fb5316",
+    "nama": "Flexibel charger OPPO A16",
+    "minStok": 2,
+    "brand": "Oppo"
+  },
+  {
+    "id": "2a808386-de94-5fd9-a30c-ab9e61a3fcc5",
+    "nama": "Flexibel charger vivo Y20",
+    "minStok": 2,
+    "brand": "Vivo"
+  },
+  {
+    "id": "d7eb6c27-d810-5789-a43c-231dfce1cb03",
+    "nama": "Flexibel charger iPhone 11",
+    "minStok": 2,
+    "brand": "Apple"
+  },
+  {
+    "id": "f37aec4a-524c-5586-ae4c-69c1e62aab80",
+    "nama": "Konektor charger Micro USB (sesuaikan tipe)",
+    "minStok": 5,
+    "brand": "Universal"
+  },
+  {
+    "id": "a7f6b7a9-0dd7-59e9-aed6-34ec642ba9dd",
+    "nama": "Konektor charger USB Type-C (sesuaikan tipe)",
+    "minStok": 5,
+    "brand": "Universal"
+  },
+  {
+    "id": "2288398e-6b49-5bd1-a09d-c9e5fdebf946",
+    "nama": "Speaker bawah Samsung Galaxy A12",
+    "minStok": 2,
+    "brand": "Samsung"
+  },
+  {
+    "id": "e59d4bbc-300b-5a01-b8fc-a05b3982b3c5",
+    "nama": "Speaker bawah iPhone 11",
+    "minStok": 2,
+    "brand": "Apple"
+  },
+  {
+    "id": "d50b6d5b-5d91-5f6b-894f-8d9874f8f900",
+    "nama": "Motor getar iPhone 11",
+    "minStok": 2,
+    "brand": "Apple"
+  }
+]

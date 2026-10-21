@@ -1,24 +1,23 @@
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { can, canSeeMoney } from "@/auth/roles";
+import { useUser } from "@/auth/session";
+import { PageBody, PageHeader } from "@/components/layout/app-shell";
+import { MethodPicker } from "@/components/method-picker";
+import { PhotoManager } from "@/components/photos";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, Input, RpInput, Textarea } from "@/components/ui/field";
+import { Row } from "@/components/ui/misc";
+import { Sheet } from "@/components/ui/sheet";
+import { UnitStatusTag } from "@/components/ui/status-tag";
+import { useToast } from "@/components/ui/toast";
+import { db } from "@/db/db";
+import type { CashMethod } from "@/db/types";
+import { returUnit, sellUnit, setUnitPrice } from "@/db/units";
+import { daysSince, fmtDate, rp } from "@/lib/format";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, BadgeCheck, Printer, Undo2 } from "lucide-react";
-import { db } from "@/db/db";
-import { returUnit, sellUnit } from "@/db/units";
-import { logAudit } from "@/db/audit";
-import { useUser } from "@/auth/session";
-import { canSeeMoney } from "@/auth/roles";
-import type { CashMethod } from "@/db/types";
-import { rp, fmtDate, daysSince } from "@/lib/format";
-import { PageBody, PageHeader } from "@/components/layout/app-shell";
-import { Button } from "@/components/ui/button";
-import { Field, Input, RpInput, Textarea } from "@/components/ui/field";
-import { Sheet } from "@/components/ui/sheet";
-import { MethodPicker } from "@/components/method-picker";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UnitStatusTag } from "@/components/ui/status-tag";
-import { Row } from "@/components/ui/misc";
-import { PhotoManager } from "@/components/photos";
-import { useToast } from "@/components/ui/toast";
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 export function UnitDetailPage() {
   const { id } = useParams();
@@ -26,7 +25,7 @@ export function UnitDetailPage() {
   const money = canSeeMoney(user.role);
   const nav = useNavigate();
   const toast = useToast();
-  const unit = useLiveQuery(() => db.units.get(id!), [id]);
+  const unit = useLiveQuery(async () => (await db.units.get(id!)) ?? null, [id]);
   const [sellOpen, setSellOpen] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
   const [returOpen, setReturOpen] = useState(false);
@@ -45,7 +44,8 @@ export function UnitDetailPage() {
   });
   const [busy, setBusy] = useState(false);
 
-  if (!unit) return null;
+  if (unit === undefined) return <PageBody>Memuat unit…</PageBody>;
+  if (unit === null) return <PageBody>Unit tidak ditemukan. <Link to="/app/stok" className="underline">Kembali ke stok</Link></PageBody>;
   const sold = unit.status === "terjual";
 
   return (
@@ -124,7 +124,7 @@ export function UnitDetailPage() {
           </CardContent>
         </Card>
 
-        {!sold && (
+        {!sold && can(user.role, "sell") && (
           <Button
             variant="accent"
             size="lg"
@@ -192,11 +192,7 @@ export function UnitDetailPage() {
             onClick={async () => {
               setBusy(true);
               try {
-                await db.units.update(unit.id, { hargaJual });
-                await logAudit(
-                  user, "harga", "unit", unit.id,
-                  `${unit.kode}: harga jual → ${rp(hargaJual)}`,
-                );
+                await setUnitPrice(user, unit.id, hargaJual);
                 toast("Harga jual diperbarui");
                 setPriceOpen(false);
               } finally {

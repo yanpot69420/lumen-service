@@ -1,12 +1,13 @@
-import { Link } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
-import { DatabaseBackup, ChevronRight } from "lucide-react";
 import { db } from "@/db/db";
+import { isCloud } from "@/db/supabase";
+import { useLiveQuery } from "dexie-react-hooks";
+import { ChevronRight, DatabaseBackup } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const STALE_MS = 3 * 86_400_000; // 3 hari
 
 /** Peringatan bila data ada tapi backup belum pernah/terlalu lama. */
-export function BackupReminder({ hasData }: { hasData: boolean }) {
+export function BackupReminder({ hasData }: { hasData: boolean; }) {
   const last = useLiveQuery(async () => {
     const row = await db.settings.get("lastBackupAt");
     return row ? Number(row.value) : 0;
@@ -28,7 +29,7 @@ export function BackupReminder({ hasData }: { hasData: boolean }) {
     >
       <DatabaseBackup className="size-4 shrink-0" />
       {days === null
-        ? "Data belum pernah di-backup — unduh backup sekarang. Data hanya tersimpan di perangkat ini."
+        ? (isCloud ? "Unduh backup tambahan untuk penyimpanan pribadi." : "Data belum pernah di-backup — unduh backup sekarang. Data hanya tersimpan di perangkat ini.")
         : `Backup terakhir ${days} hari lalu — unduh backup baru di Pengaturan.`}
       <ChevronRight className="ml-auto size-4 shrink-0" />
     </Link>

@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { canSeeMoney } from "@/auth/roles";
+import { useUser } from "@/auth/session";
+import { useToast } from "@/components/ui/toast";
+import { useServiceAction } from "@/components/use-service-action";
+import { db } from "@/db/db";
+import { addPhoto, deletePhoto } from "@/db/photos";
+import type { Photo } from "@/db/types";
+import { cn } from "@/lib/cn";
+import { compressImage } from "@/lib/image";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Camera, Trash2 } from "lucide-react";
-import { db, uid } from "@/db/db";
-import type { Photo } from "@/db/types";
-import { compressImage } from "@/lib/image";
-import { cn } from "@/lib/cn";
+import { useEffect, useRef, useState } from "react";
 
 function useObjectUrl(blob: Blob | undefined): string | undefined {
   const [url, setUrl] = useState<string>();
@@ -73,25 +78,73 @@ export function PhotoManager({
   refId,
   canDelete,
   label = "Tambah foto",
+  onBusyChange,
+  serviceUndo = false,
+  disabled = false,
 }: {
   refType: Photo["refType"];
   refId: string;
   canDelete?: boolean;
   label?: string;
+  onBusyChange?: (busy: boolean) => void;
+  serviceUndo?: boolean;
+  disabled?: boolean;
 }) {
   const photos = useLiveQuery(
     () => db.photos.where({ refType, refId }).toArray(),
     [refType, refId],
   );
+  const user = useUser();
+  const toast = useToast();
+  const { run } = useServiceAction();
+  const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const picking = useRef(false);
 
   async function onPick(files: FileList | null) {
-    if (!files) return;
-    for (const f of Array.from(files)) {
-      const blob = await compressImage(f);
-      await db.photos.add({ id: uid(), refType, refId, blob, createdAt: Date.now() });
+    if (!files?.length || picking.current || disabled) return;
+    picking.current = true;
+    setBusy(true);
+    onBusyChange?.(true);
+    let reportedByAction = false;
+    try {
+      const blobs: Blob[] = [];
+      for (const f of Array.from(files)) {
+        blobs.push(await compressImage(f));
+      }
+      const save = async () => {
+        for (const blob of blobs) await addPhoto(user, refType, refId, blob);
+      };
+      if (serviceUndo) {
+        reportedByAction = true;
+        await run(save, { pending: "Menyimpan foto…", success: blobs.length > 1 ? `${blobs.length} foto ditambahkan` : "Foto ditambahkan" });
+      }
+      else await save();
+    } catch (error) {
+      if (!reportedByAction) toast(error instanceof Error ? error.message : "Gagal menyimpan foto", "error");
+    } finally {
+      if (inputRef.current) inputRef.current.value = "";
+      picking.current = false;
+      setBusy(false);
+      onBusyChange?.(false);
     }
-    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  async function removePhoto(id: string) {
+    if (picking.current || disabled) return;
+    picking.current = true;
+    setBusy(true);
+    onBusyChange?.(true);
+    try {
+      if (serviceUndo) await run(() => deletePhoto(user, id), { pending: "Menghapus foto…", success: "Foto dihapus" });
+      else await deletePhoto(user, id);
+    } catch (error) {
+      if (!serviceUndo) toast(error instanceof Error ? error.message : "Gagal menghapus foto", "error");
+    } finally {
+      picking.current = false;
+      setBusy(false);
+      onBusyChange?.(false);
+    }
   }
 
   return (
@@ -101,16 +154,17 @@ export function PhotoManager({
           key={p.id}
           photo={p}
           className="aspect-square"
-          onDelete={canDelete ? () => db.photos.delete(p.id) : undefined}
+          onDelete={!busy && !disabled && canDelete && (refType === "draft" || canSeeMoney(user.role)) ? () => { void removePhoto(p.id); } : undefined}
         />
       ))}
       <button
         type="button"
+        disabled={busy || disabled}
         onClick={() => inputRef.current?.click()}
         className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 text-slate-400 hover:border-brand-400 hover:text-brand-500"
       >
         <Camera className="size-5" />
-        <span className="text-[10px]">{label}</span>
+        <span className="text-[10px]">{busy ? "Menyimpan…" : label}</span>
       </button>
       <input
         ref={inputRef}
@@ -173,7 +227,7 @@ export function PendingPhotos({
   );
 }
 
-function PendingThumb({ blob, onDelete }: { blob: Blob; onDelete: () => void }) {
+function PendingThumb({ blob, onDelete }: { blob: Blob; onDelete: () => void; }) {
   const url = useObjectUrl(blob);
   return (
     <div className="relative aspect-square">
