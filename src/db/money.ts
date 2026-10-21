@@ -64,9 +64,10 @@ export interface MonthlyReport {
   perMethod: Record<CashMethod, { masuk: number; keluar: number; }>;
 }
 
-function diambilAt(t: Ticket): number | undefined {
+function closedAt(t: Ticket): number | undefined {
+  if (t.status !== "diambil" && t.status !== "batal") return undefined;
   for (let i = t.history.length - 1; i >= 0; i--) {
-    if (t.history[i].status === "diambil") return t.history[i].at;
+    if (t.history[i].status === t.status) return t.history[i].at;
   }
   return undefined;
 }
@@ -114,8 +115,10 @@ export function computeMonthlyReport(
 
   const partModal = tickets
     .filter((t) => {
-      const at = diambilAt(t);
-      return t.status === "diambil" && at !== undefined && inMonth(at, month);
+      // Parts still attached to a cancelled ticket were consumed too. A
+      // recoverable part must be removed/restocked before closing that ticket.
+      const at = closedAt(t);
+      return at !== undefined && inMonth(at, month);
     })
     .flatMap((t) => t.partsUsed)
     .reduce((s, p) => s + p.modal * p.qty, 0);

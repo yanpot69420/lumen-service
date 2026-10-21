@@ -19,6 +19,7 @@ export function CustomerForm({
 }) {
   const user = useUser();
   const toast = useToast();
+  const [initialCustomer] = useState(customer);
   const [form, setForm] = useState({
     name: customer?.name ?? "",
     phone: customer?.phone ?? "",
@@ -34,7 +35,7 @@ export function CustomerForm({
     setError("");
     setBusy(true);
     try {
-      const saved = await saveCustomer(user, form, customer?.id);
+      const saved = await saveCustomer(user, form, initialCustomer?.id, initialCustomer);
       toast(customer ? "Profil pelanggan diperbarui" : "Pelanggan ditambahkan");
       onSaved(saved);
     } catch (cause) {
@@ -72,7 +73,7 @@ export function CustomerForm({
             type="checkbox"
             checked={form.isRegular}
             onChange={(event) => setForm({ ...form, isRegular: event.target.checked })}
-            className="mt-0.5 size-4 accent-brand-600"
+            className="mt-0.5 size-4 accent-accent-600"
           />
           <span>
             <span className="block text-sm font-medium">Pelanggan langganan</span>

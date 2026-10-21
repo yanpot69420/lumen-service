@@ -11,13 +11,14 @@ const updateSW = registerSW({
     if (document.getElementById("sw-update-bar")) return;
     const bar = document.createElement("div");
     bar.id = "sw-update-bar";
+    bar.setAttribute("role", "status");
     bar.style.cssText =
-      "position:fixed;bottom:76px;left:50%;transform:translateX(-50%);z-index:99;display:flex;gap:12px;align-items:center;background:#0b1220;color:#fff;padding:10px 16px;border-radius:14px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25)";
+      "position:fixed;bottom:calc(6.5rem + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:99;display:flex;width:calc(100vw - 2rem);max-width:560px;box-sizing:border-box;gap:12px;align-items:center;background:#171717;color:#fff;padding:10px 16px;border-radius:14px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25)";
     bar.textContent = "Versi baru tersedia. Simpan formulir sebelum memuat ulang.";
     const btn = document.createElement("button");
     btn.textContent = "Muat ulang";
     btn.style.cssText =
-      "background:#f59e0b;color:#0b1220;font-weight:600;border:none;border-radius:10px;padding:6px 12px;font-size:13px;cursor:pointer";
+      "flex-shrink:0;min-height:44px;background:#f97316;color:#171717;font-weight:600;border:none;border-radius:10px;padding:6px 12px;font-size:13px;cursor:pointer";
     btn.onclick = () => updateSW(true);
     bar.appendChild(btn);
     document.body.appendChild(bar);

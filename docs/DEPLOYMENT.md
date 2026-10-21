@@ -43,6 +43,7 @@ Selesaikan pekerjaan ini pada salinan/staging terlebih dahulu. Koordinasikan jed
    - [202610200005_part_brands.sql](/Users/mac/Workspace/lumen-service/supabase/migrations/202610200005_part_brands.sql)
    - [202610200006_simplify_part_brands.sql](/Users/mac/Workspace/lumen-service/supabase/migrations/202610200006_simplify_part_brands.sql)
    - [202610200007_customers.sql](/Users/mac/Workspace/lumen-service/supabase/migrations/202610200007_customers.sql)
+   - [202610210001_preflight_integrity.sql](/Users/mac/Workspace/lumen-service/supabase/migrations/202610210001_preflight_integrity.sql)
 
 3. Deploy versi baru fungsi `auth` dan `public`, lalu frontend dari build yang sama. Versi frontend lama tidak kompatibel dengan akses tabel yang kini ditutup. Jika server belum diperbarui, frontend baru menampilkan error dan mempertahankan antrean.
 4. Minta staf login ulang. PIN lama dipertahankan di penyimpanan privat server; hash SHA-256 lama di-upgrade saat login berhasil. Profil yang ditarik ke perangkat tidak lagi berisi hash PIN/recovery staf lain.
@@ -50,12 +51,14 @@ Selesaikan pekerjaan ini pada salinan/staging terlebih dahulu. Koordinasikan jed
 
 Migrasi tidak mengosongkan tabel bisnis. Hash dipindahkan ke skema `private`; akun Auth lama dihubungkan melalui email staf yang sudah digunakan aplikasi. Jangan menjalankan ulang skema instalasi baru pada database lama dan jangan mengganti kredensial cloud untuk menghubungkan cache browser toko lain.
 
+Migrasi `202610210001_preflight_integrity.sql` menambahkan perlindungan IMEI stok aktif, sumber garansi, serta jurnal retur termasuk refund Rp0. Jika data lama memiliki IMEI ganda pada stok aktif, migrasi berhenti tanpa menghapus data; Owner perlu merekonsiliasi pencatatan di staging sebelum mencoba kembali. Frontend dan server terbaru harus dirilis bersama: klien lama yang mengirim retur tanpa jurnal refund Rp0 akan ditolak server dan antreannya perlu diperiksa.
+
 ## Perilaku data dan sinkronisasi
 
 - Satu transaksi lokal menyimpan entitas, kas, stok, audit, dan payload antreannya bersama. Server menerima satu transaksi tersebut melalui RPC atomik dengan ID pengiriman ulang dan pemeriksaan revisi.
 - Antrean tidak dihapus hanya karena membesar. Perubahan yang belum terkirim tidak ditimpa oleh pull. Jika ada konflik, status menampilkan error dan perubahan lokal tetap dipertahankan. Jangan menghapus data browser untuk mengatasi konflik; simpan backup dan rekonsiliasikan transaksi dengan Owner.
 - Kode servis baru memakai `LS-` dan 12 karakter acak (60 bit), tanpa huruf/angka 0/O dan 1/I yang mudah tertukar. Aplikasi memeriksa benturan lokal; constraint unik server tetap melindungi benturan antarperangkat. Kode unit masih memakai identitas perangkat; pemulihan lokal mengganti identitas tersebut. Nota lama tetap dapat dibaca.
-- Opsi “Langsung kerjakan” saat mengajukan harga menyimpan konfirmasi harga dan mulai pengerjaan dalam satu transaksi, dengan dua langkah riwayat. Migrasi `202610200004_service_workflow.sql` wajib dipasang sebelum frontend ini digunakan di cloud agar transisi gabungan diterima server. Jika migrasi sebelumnya sudah terpasang, cukup tambahkan migrasi keempat ini.
+- Opsi “Langsung kerjakan” saat mengajukan harga menyimpan konfirmasi harga dan mulai pengerjaan dalam satu transaksi, dengan dua langkah riwayat. Migrasi `202610200004_service_workflow.sql` wajib dipasang agar transisi gabungan diterima server; lanjutkan seluruh migrasi berikutnya dalam daftar sebelum memakai frontend terbaru.
 - Pengelompokan merek sparepart memerlukan `202610200005_part_brands.sql` sebelum frontend dan seed SQL terbaru digunakan. Migrasi menambah kolom/index/validasi tanpa menulis ulang barang atau revisi yang sudah ada. Staf terbatas tetap tidak dapat mengubah merek melalui sinkronisasi; perubahan klasifikasi hanya untuk Owner/Head Operasional.
 - Foto dikirim ke bucket privat dengan metadata. Foto KTP hanya dapat dibaca Owner/Head Ops. Foto bukti yang dihapus dari tampilan dicatat dalam audit; objek cloud tidak ditimpa atau dihapus permanen melalui API staf.
 - Akses offline cloud hanya tersedia untuk staf terakhir yang berhasil login online di perangkat itu, selama 24 jam. Kunci otomatis mempertahankan hak offline terbatas tersebut; logout manual menghapusnya. Pengguna lain dan recovery cloud memerlukan koneksi. Penonaktifan staf di server menolak akses cloud segera; perangkat yang sepenuhnya offline tetap memiliki cache sampai batas akses offline berakhir.
@@ -77,5 +80,7 @@ Pengujian otomatis mencakup transaksi, rollback, pengiriman ulang, konflik revis
 - Coba backup terenkripsi, passphrase salah, file tidak lengkap, dan pemulihan pada salinan perangkat.
 
 Pengujian perangkat, printer fisik, dan layanan Supabase yang benar-benar ter-deploy tidak digantikan oleh hasil pengujian lokal.
+
+Hasil pemeriksaan sebelum deployment beserta bug yang diperbaiki dicatat di [PREFLIGHT.md](PREFLIGHT.md). Hosting harus melayani ulang `/index.html` untuk rute SPA seperti `/app/servis/...`, `/cek`, dan `/katalog`; pengaturan rewrite perlu diverifikasi pada hosting yang dipilih.
 
 Kategori stok yang ditampilkan dibatasi menjadi Samsung, Apple, Vivo, Oppo, Xiaomi, Realme, Infinix, Tecno, Universal, dan Lainnya. Migrasi `202610200006_simplify_part_brands.sql` menerima label baru sekaligus mempertahankan dukungan nilai lama agar data dan antrean tidak perlu ditulis ulang. iPhone tampil sebagai Apple; merek lama di luar daftar tampil sebagai Lainnya.

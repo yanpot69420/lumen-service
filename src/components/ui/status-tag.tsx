@@ -13,12 +13,12 @@ export const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
 
 const ticketColors: Record<TicketStatus, string> = {
   masuk: "bg-slate-100 text-slate-700",
-  dicek: "bg-sky-100 text-sky-800",
-  konfirmasi: "bg-amber-100 text-amber-800",
-  dikerjakan: "bg-indigo-100 text-indigo-800",
-  selesai: "bg-emerald-100 text-emerald-800",
-  diambil: "bg-emerald-600 text-white",
-  batal: "bg-red-100 text-red-700",
+  dicek: "bg-brand-100 text-brand-800",
+  konfirmasi: "bg-accent-100 text-accent-800",
+  dikerjakan: "bg-accent-100 text-accent-800",
+  selesai: "bg-brand-200 text-brand-900",
+  diambil: "bg-brand-800 text-white",
+  batal: "bg-slate-200 text-slate-600",
 };
 
 export function TicketStatusTag({ status }: { status: TicketStatus }) {
@@ -40,7 +40,7 @@ export function UnitStatusTag({ status }: { status: UnitStatus }) {
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
         status === "stok"
-          ? "bg-emerald-100 text-emerald-800"
+          ? "bg-brand-100 text-brand-800"
           : "bg-slate-200 text-slate-600",
       )}
     >

@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import { db } from "@/db/db";
 import { customerTickets, saveCustomer } from "@/db/customers";
-import { createGaransiClaim, createTicket } from "@/db/tickets";
+import { changeStatus, createGaransiClaim, createTicket, submitServicePrice } from "@/db/tickets";
 import { exportBackup, restoreBackup } from "@/db/backup";
 import { validateBackup } from "@/lib/backup-schema";
 import type { Customer, Ticket, User } from "@/db/types";
@@ -126,7 +126,11 @@ test("technician cannot edit profiles but service intake can record a basic cust
 test("garansi claim keeps the source customer link", async () => {
   const customer = await saveCustomer(owner, profile);
   const source = await createTicket(owner, { ...intake, customerId: customer.id }, photo());
-  const claim = await createGaransiClaim(owner, source, "LCD bermasalah lagi");
+  await changeStatus(owner, source, "dicek");
+  await submitServicePrice(owner, (await db.tickets.get(source.id))!, 0, true);
+  await changeStatus(owner, (await db.tickets.get(source.id))!, "selesai");
+  await changeStatus(owner, (await db.tickets.get(source.id))!, "diambil");
+  const claim = await createGaransiClaim(owner, (await db.tickets.get(source.id))!, "LCD bermasalah lagi");
   expect(claim.customerId).toBe(customer.id);
   expect(claim.garansiDari).toBe(source.id);
   expect(await db.customers.count()).toBe(1);

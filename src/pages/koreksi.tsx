@@ -27,9 +27,9 @@ export function KoreksiPage() {
 
   const badge = (s: Correction["status"]) =>
     s === "pending" ? (
-      <Tag className="bg-amber-100 text-amber-800">Menunggu</Tag>
+      <Tag className="bg-accent-100 text-accent-800">Menunggu</Tag>
     ) : s === "approved" ? (
-      <Tag className="bg-emerald-100 text-emerald-800">Disetujui</Tag>
+      <Tag className="bg-brand-100 text-brand-800">Disetujui</Tag>
     ) : (
       <Tag className="bg-red-100 text-red-700">Ditolak</Tag>
     );

@@ -14,7 +14,7 @@ const variants: Record<Variant, string> = {
   default:
     "bg-brand-950 text-white hover:bg-brand-900 active:bg-brand-800",
   accent:
-    "bg-accent-500 text-brand-950 font-semibold hover:bg-accent-400 active:bg-accent-600",
+    "bg-accent-500 text-brand-950 font-semibold hover:bg-accent-400 active:bg-accent-600 active:text-white",
   secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
   outline:
     "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50",
@@ -40,7 +40,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       type={type ?? "button"}
       className={cn(
-        "ui-button inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+        "ui-button inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
         variants[variant],
         sizes[size],
         className,

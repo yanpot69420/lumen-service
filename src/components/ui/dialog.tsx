@@ -93,7 +93,7 @@ export function ConfirmDialog({
         tabIndex={-1}
         aria-labelledby={titleId}
         aria-modal
-        className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+        className="ui-modal relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
       >
         <h2 id={titleId} className="text-base font-semibold">{title}</h2>
         {children && (

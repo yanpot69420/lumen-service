@@ -1,5 +1,6 @@
 import { canSeeMoney } from "@/auth/roles";
 import { useSession, useUser } from "@/auth/session";
+import { BrandMark } from "@/components/brand";
 import { db } from "@/db/db";
 import { isCloud } from "@/db/supabase";
 import { startSync, stopSync, syncNow, useSyncStatus } from "@/db/sync";
@@ -27,26 +28,27 @@ import {
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 
-export function SyncPill() {
+export function SyncPill({ light = false }: { light?: boolean; }) {
   const s = useSyncStatus();
   if (!isCloud) return null;
   const map = {
     off: { icon: Cloud, text: "Cloud terkunci", cls: "text-slate-400" },
-    idle: { icon: Check, text: "Tersinkron", cls: "text-emerald-400" },
-    syncing: { icon: RefreshCw, text: "Menyinkron…", cls: "text-sky-400" },
-    error: { icon: CloudOff, text: "Gagal sinkron", cls: "text-amber-400" },
+    idle: { icon: Check, text: "Tersinkron", cls: "text-brand-200" },
+    syncing: { icon: RefreshCw, text: "Menyinkron…", cls: "text-accent-400" },
+    error: { icon: CloudOff, text: "Gagal sinkron", cls: "text-accent-400" },
     offline: { icon: CloudOff, text: "Offline", cls: "text-slate-400" },
   } as const;
   const m = map[s.state];
   const Icon = m.icon;
+  const tone = light ? ({ off: "text-slate-500", idle: "text-brand-700", syncing: "text-accent-700", error: "text-accent-700", offline: "text-slate-500" } as const)[s.state] : m.cls;
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-2 text-[11px] font-medium text-slate-400" role="status">
-      <Icon className={cn("size-3.5", m.cls, s.state === "syncing" && "animate-spin")} />
-      <span className={m.cls}>{m.text}</span>
-      {s.error && <span className="w-full break-words text-amber-500">{s.error}</span>}
+    <div className={cn("flex flex-wrap items-center gap-1.5 px-2 text-[11px] font-medium", light ? "text-slate-500" : "text-slate-400")} role="status">
+      <Icon className={cn("size-3.5", tone, s.state === "syncing" && "animate-spin")} />
+      <span className={tone}>{m.text}</span>
+      {s.error && <span className={cn("w-full break-words", light ? "text-accent-700" : "text-accent-400")}>{s.error}</span>}
       {s.state === "error" && <><button onClick={() => { void syncNow(); }} className="underline">Coba lagi</button><NavLink to="/app/pengaturan" className="underline">Simpan backup</NavLink></>}
       {s.pending > 0 && (
-        <span className="ml-auto rounded-full bg-white/10 px-1.5 text-[10px]">
+        <span className={cn("ml-auto rounded-full px-1.5 text-[10px]", light ? "bg-brand-100 text-brand-700" : "bg-white/10")}>
           {s.pending} antre
         </span>
       )}
@@ -57,12 +59,12 @@ export function SyncPill() {
 const mainNav = [
   { to: "/app/beranda", label: "Beranda", icon: LayoutDashboard },
   { to: "/app/servis", label: "Servis", icon: Wrench },
+  { to: "/app/pelanggan", label: "Pelanggan", icon: Users },
   { to: "/app/stok", label: "Stok", icon: Smartphone },
   { to: "/app/kas", label: "Kas", icon: Wallet },
 ];
 
 const moreNav = [
-  { to: "/app/pelanggan", label: "Pelanggan", icon: Users, ownerOnly: false },
   { to: "/app/laporan", label: "Laporan", icon: BarChart3, moneyOnly: true, ownerOnly: false },
   { to: "/app/koreksi", label: "Koreksi", icon: ClipboardCheck, ownerOnly: false },
   { to: "/app/audit", label: "Audit Log", icon: ScrollText, ownerOnly: true },
@@ -114,10 +116,8 @@ export function AppShell() {
       to={to}
       className={({ isActive }) =>
         cn(
-          "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-          isActive
-            ? "bg-white/10 text-white"
-            : "text-slate-400 hover:bg-white/5 hover:text-slate-200",
+          "desktop-nav-item relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-colors",
+          isActive && "is-active",
         )
       }
     >
@@ -134,19 +134,21 @@ export function AppShell() {
   return (
     <div className="app-shell min-h-dvh lg:flex">
       {/* Sidebar desktop */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col bg-brand-950 p-4 lg:flex">
-        <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-accent-500 text-lg font-black text-brand-950">
-            L
-          </div>
+      <aside aria-label="Sidebar ruang kerja" className="desktop-sidebar fixed inset-y-0 left-0 z-30 hidden w-60 flex-col p-4 lg:flex">
+        <Link to="/app/beranda" className="mb-7 mt-2 flex items-center gap-2.5 px-2">
+          <BrandMark />
           <div>
-            <p className="text-sm font-bold text-white">Lumen Service</p>
-            <p className="text-[11px] text-slate-400">Sistem Operasional</p>
+            <p className="text-sm font-bold tracking-tight text-brand-950">Lumen <span className="font-normal">Service</span></p>
+            <p className="mt-0.5 text-[10px] text-slate-400">Ruang kerja toko</p>
           </div>
-        </div>
-        <nav className="flex flex-1 flex-col gap-1">
+        </Link>
+        <Link to="/app/servis/baru" onClick={(event) => {
+          if (pathname === "/app/servis/baru") { event.preventDefault(); window.dispatchEvent(new Event("lumen:new-service")); }
+        }} className="mb-6 inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[14px] bg-accent-500 px-4 text-sm font-semibold text-brand-950 transition-colors hover:bg-accent-400"><Plus className="size-4" /> Buat nota servis</Link>
+        <nav aria-label="Navigasi ruang kerja" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain">
+          <p className="mb-2 px-3 text-[9px] font-semibold uppercase tracking-[.17em] text-slate-400">Operasional</p>
           {visibleMainNav.map((n) => navItem(n.to, n.label, n.icon))}
-          <div className="my-2 border-t border-white/10" />
+          <p className="mb-2 mt-5 px-3 text-[9px] font-semibold uppercase tracking-[.17em] text-slate-400">Pengelolaan</p>
           {moreNav
             .filter((n) => !n.ownerOnly || user.role === "owner")
             .filter(
@@ -161,27 +163,27 @@ export function AppShell() {
                 n.to === "/app/koreksi" ? pendingCorrections : undefined,
               ),
             )}
-          {navItem("/", "Web Publik", Globe)}
+          <div className="mt-3 border-t border-slate-100 pt-3">{navItem("/", "Web Publik", Globe)}</div>
         </nav>
-        <div className="mb-2">
-          <SyncPill />
+        <div className="mb-2 mt-3 shrink-0">
+          <SyncPill light />
         </div>
-        <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/5 p-3">
-          <div className="flex size-8 items-center justify-center rounded-full bg-brand-700 text-xs font-bold text-white">
+        <div className="mt-2 flex shrink-0 items-center gap-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-200 text-xs font-bold text-brand-800">
             {user.name.slice(0, 1).toUpperCase()}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold text-white">
+          <Link to="/app/pengaturan" aria-label="Pengaturan akun" className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-brand-950">
               {user.name}
             </p>
             <p className="text-[10px] text-slate-400">{ROLE_LABEL[user.role]}</p>
-          </div>
+          </Link>
           <button
             onClick={async () => {
               await logout();
               nav("/app/login");
             }}
-            className="text-slate-400 hover:text-white"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-brand-700"
             aria-label="Keluar"
           >
             <LogOut className="size-4" />
@@ -259,9 +261,9 @@ export function PageHeader({
       <div className="page-header-inner flex h-14 items-center gap-3 px-4 lg:px-8">
         {back && <div className="page-header-back shrink-0">{back}</div>}
         <div className="min-w-0 flex-1">
-          <p className="page-header-eyebrow lg:hidden">Lumen Service</p>
+          <p className="page-header-eyebrow"><span className="lg:hidden">Lumen Service</span><span className="hidden lg:inline">Ruang kerja · Lumen Service</span></p>
           <h1 className="page-header-title truncate text-base font-bold lg:text-lg">{title}</h1>
-          {subtitle && <p className="mt-1 text-xs text-slate-500">{subtitle}</p>}
+          {subtitle && <p className="mt-1 hidden text-xs text-slate-500 lg:block">{subtitle}</p>}
         </div>
         {action && <div className="page-header-action flex shrink-0 items-center gap-2">{action}</div>}
       </div>

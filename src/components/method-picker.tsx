@@ -33,7 +33,7 @@ export function MethodPicker({
 export function MethodTag({ method }: { method: CashMethod }) {
   if (method === "tunai") return null;
   return (
-    <span className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+    <span className="inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold text-brand-800">
       {METHOD_LABEL[method]}
     </span>
   );

@@ -22,7 +22,7 @@ export function CardHeader({
 }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("flex items-center justify-between px-4 pt-4", className)}
+      className={cn("flex items-center justify-between gap-3 px-4 pt-4 lg:px-5 lg:pt-5", className)}
       {...props}
     />
   );
@@ -34,7 +34,7 @@ export function CardTitle({
 }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn("text-sm font-semibold text-slate-900", className)}
+      className={cn("text-sm font-semibold tracking-tight text-slate-900 lg:text-[15px]", className)}
       {...props}
     />
   );
@@ -44,5 +44,5 @@ export function CardContent({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-4", className)} {...props} />;
+  return <div className={cn("p-4 lg:p-5", className)} {...props} />;
 }

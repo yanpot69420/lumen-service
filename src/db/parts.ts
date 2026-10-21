@@ -41,10 +41,11 @@ export async function restockPart(user: User, id: string, qty: number, cost: num
     await logAudit(actor, "restok", "part", id, `Restok ${part.nama}: ${part.stok} → ${stok}`);
   });
 }
-export async function adjustPart(user: User, id: string, stock: number, reason: string) {
+export async function adjustPart(user: User, id: string, stock: number, reason: string, displayedStock?: number) {
   return operation(user, "stock", async (actor) => {
     amount(stock, "Stok"); if (!reason.trim()) throw new Error("Alasan wajib diisi");
     const part = await db.parts.get(id); if (!part) throw new Error("Item tidak ditemukan");
+    if (displayedStock !== undefined && part.stok !== displayedStock) throw new Error("Stok sudah berubah. Buka kembali penyesuaian dan periksa hitungan terbaru.");
     await db.parts.update(id, { stok: stock });
     await logAudit(actor, "opname", "part", id, `${part.nama}: ${part.stok} → ${stock}. ${reason}`);
   });

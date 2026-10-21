@@ -23,7 +23,7 @@ export function KatalogPage() {
     <div className="flex min-h-dvh flex-col bg-slate-50">
       <PublicNav active="katalog" />
       <main className="mx-auto w-full max-w-4xl flex-1 space-y-4 px-4 py-8">
-        {error && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{error}</p>}
+        {error && <p role="alert" className="rounded-xl bg-accent-50 p-4 text-sm text-accent-800">{error}</p>}
         {!isCloud && <p className="text-xs text-slate-500">Pratinjau lokal — stok ini berasal dari perangkat ini.</p>}
         <div>
           <h1 className="text-xl font-bold">Katalog HP Second</h1>

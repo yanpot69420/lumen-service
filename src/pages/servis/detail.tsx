@@ -65,6 +65,7 @@ export function ServisDetailPage() {
   const [statusModal, setStatusModal] = useState<null | {
     to: Ticket["status"];
     label: string;
+    ticket: Ticket;
   }>(null);
   const [biayaJasa, setBiayaJasa] = useState(0);
   const [langsungKerjakan, setLangsungKerjakan] = useState(false);
@@ -74,9 +75,9 @@ export function ServisDetailPage() {
   const [partModal, setPartModal] = useState(false);
   const [partId, setPartId] = useState("");
   const [qty, setQty] = useState(1);
-  const [cancelModal, setCancelModal] = useState(false);
+  const [cancelModal, setCancelModal] = useState<Ticket | null>(null);
   const [refundDp, setRefundDp] = useState(true);
-  const [editModal, setEditModal] = useState(false);
+  const [editModal, setEditModal] = useState<Ticket | null>(null);
   const [editF, setEditF] = useState({
     customerName: "",
     phone: "",
@@ -85,10 +86,10 @@ export function ServisDetailPage() {
     keluhan: "",
     kelengkapan: [] as string[],
   });
-  const [revisiModal, setRevisiModal] = useState(false);
+  const [revisiModal, setRevisiModal] = useState<Ticket | null>(null);
   const [revisiJasa, setRevisiJasa] = useState(0);
   const [garansiModal, setGaransiModal] = useState(false);
-  const [piutangModal, setPiutangModal] = useState(false);
+  const [piutangModal, setPiutangModal] = useState<Ticket | null>(null);
   const [bayarPiutang, setBayarPiutang] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -108,9 +109,9 @@ export function ServisDetailPage() {
     try {
       await run(async () => {
         if (statusModal.to === "konfirmasi") {
-          await submitServicePrice(user, ticket, biayaJasa, langsungKerjakan, note.trim() || undefined);
+          await submitServicePrice(user, statusModal.ticket, biayaJasa, langsungKerjakan, note.trim() || undefined);
         } else {
-          await changeStatus(user, ticket, statusModal.to, {
+          await changeStatus(user, statusModal.ticket, statusModal.to, {
             note: note.trim() || undefined,
             bayar: statusModal.to === "diambil" ? bayar : undefined,
             method: statusModal.to === "diambil" ? method : undefined,
@@ -165,6 +166,7 @@ export function ServisDetailPage() {
     <>
       <PageHeader
         title={ticket.noNota}
+        subtitle="Detail perangkat, biaya servis, dan perkembangan pengerjaan."
         back={
           <Link to="/app/servis" aria-label="Kembali ke daftar servis" className="inline-flex size-11 items-center justify-center rounded-2xl bg-white text-slate-600 hover:text-slate-900 lg:size-auto lg:rounded-none lg:bg-transparent lg:text-slate-400">
             <ArrowLeft className="size-5" />
@@ -198,23 +200,25 @@ export function ServisDetailPage() {
           <Button variant="outline" className="h-12 rounded-2xl border-transparent text-xs" onClick={() => nav(`/app/nota/servis/${ticket.id}?label=1`)}><TagIcon /> Label</Button>
           <Button variant="outline" className="h-12 rounded-2xl border-transparent text-xs" onClick={() => nav(`/app/nota/servis/${ticket.id}`)}><Printer /> Cetak nota</Button>
         </div>
+        <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)] xl:items-start xl:gap-6 xl:space-y-0">
+        <div className="min-w-0 space-y-4 lg:space-y-5">
         {/* Ringkasan */}
-        <Card className="overflow-hidden rounded-[1.75rem] border-transparent shadow-none lg:rounded-2xl lg:border-slate-200 lg:shadow-sm">
-          <CardContent>
-            <div className="-mx-4 -mt-4 flex flex-col gap-4 bg-brand-950 p-5 text-white lg:mx-0 lg:mt-0 lg:flex-row lg:items-start lg:justify-between lg:gap-3 lg:bg-transparent lg:p-0 lg:text-slate-900">
+        <Card className="overflow-hidden rounded-[1.75rem] border-transparent shadow-none lg:rounded-[22px] lg:border-slate-200/80">
+          <CardContent className="lg:p-6">
+            <div className="-mx-4 -mt-4 flex flex-col gap-4 bg-brand-950 p-5 text-white lg:-mx-6 lg:-mt-6 lg:flex-row lg:items-start lg:justify-between lg:gap-3 lg:p-6">
               <div className="min-w-0">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50 lg:hidden">Perangkat pelanggan</p>
-                <p className="break-words text-2xl font-bold leading-tight lg:text-base">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">Perangkat pelanggan</p>
+                <p className="break-words text-2xl font-bold leading-tight lg:text-[1.5rem]">
                   {ticket.brand} {ticket.model}
                 </p>
-                <p className="mt-2 break-words text-sm leading-relaxed text-white/65 lg:mt-0 lg:text-slate-500">
+                <p className="mt-2 break-words text-sm leading-relaxed text-white/65">
                   {ticket.customerName}
                   {ticket.phone && ` · ${ticket.phone}`}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {ticket.garansiDari && (
-                  <Tag className="bg-violet-100 text-violet-800">
+                  <Tag className="bg-brand-100 text-brand-800">
                     Garansi{sourceTicket ? ` · ${sourceTicket.noNota}` : ""}
                   </Tag>
                 )}
@@ -230,17 +234,17 @@ export function ServisDetailPage() {
                       keluhan: ticket.keluhan,
                       kelengkapan: ticket.kelengkapan,
                     });
-                    setEditModal(true);
+                    setEditModal(ticket);
                   }}
-                  className="ml-auto inline-flex size-11 items-center justify-center rounded-2xl bg-white/10 text-white hover:text-accent-400 lg:ml-0 lg:size-7 lg:rounded-lg lg:bg-transparent lg:text-slate-300 lg:hover:text-brand-500"
+                  className="ml-auto inline-flex size-11 items-center justify-center rounded-2xl bg-white/10 text-white hover:text-accent-400 lg:ml-0 lg:size-9 lg:rounded-xl"
                   aria-label="Edit data nota"
                 >
                   <Pencil className="size-4" />
                 </button>
               </div>
             </div>
-            <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 lg:hidden">Keluhan perangkat</p>
-            <p className="rounded-2xl bg-[#f4f5f0] p-3 text-sm leading-relaxed lg:mt-3 lg:rounded-xl lg:bg-slate-50">
+            <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 lg:mt-5">Keluhan perangkat</p>
+            <p className="rounded-2xl bg-slate-50 p-3 text-sm leading-relaxed lg:rounded-xl lg:p-4">
               {ticket.keluhan}
             </p>
             {ticket.kelengkapan.length > 0 && (
@@ -248,8 +252,8 @@ export function ServisDetailPage() {
                 Kelengkapan: {ticket.kelengkapan.join(", ")}
               </p>
             )}
-            <div className="mt-4 border-t border-slate-100 pt-3 lg:mt-3 lg:pt-2">
-              <Row label={ticket.biayaJasa ? "Biaya jasa" : "Estimasi biaya"}>
+            <div className="mt-4 border-t border-slate-100 pt-3 lg:mt-5 lg:pt-4">
+              <Row label={(ticket.hargaFinal ?? ticket.biayaJasa > 0) ? "Biaya jasa" : "Estimasi biaya"}>
                 <span className="flex items-center justify-end gap-2">
                   {rp(ticketJasa(ticket))}
                   {canRevise && (
@@ -258,7 +262,7 @@ export function ServisDetailPage() {
                       onClick={() => {
                         setRevisiJasa(ticketJasa(ticket));
                         setNote("");
-                        setRevisiModal(true);
+                        setRevisiModal(ticket);
                       }}
                       className="inline-flex min-h-11 items-center rounded-xl bg-slate-50 px-3 text-xs font-semibold text-brand-600 lg:min-h-0 lg:rounded-none lg:bg-transparent lg:px-0 lg:font-medium lg:underline"
                     >
@@ -290,14 +294,14 @@ export function ServisDetailPage() {
               {ticket.dp > 0 && <Row label="DP">− {rp(ticket.dp)}</Row>}
               {!done && (
                 <Row label="Sisa bayar" strong>
-                  <span className={sisa > 0 ? "text-brand-600" : "text-emerald-600"}>
+                  <span className={sisa > 0 ? "text-brand-600" : "text-brand-600"}>
                     {rp(sisa)}
                   </span>
                 </Row>
               )}
               {(ticket.piutang ?? 0) > 0 && (
                 <Row label="Piutang" strong>
-                  <span className="text-red-600">{rp(ticket.piutang!)}</span>
+                  <span className="text-accent-700">{rp(ticket.piutang!)}</span>
                 </Row>
               )}
             </div>
@@ -314,7 +318,7 @@ export function ServisDetailPage() {
             onClick={() => {
               setBayarPiutang(ticket.piutang!);
               setMethod("tunai");
-              setPiutangModal(true);
+              setPiutangModal(ticket);
             }}
           >
             <HandCoins /> Terima Pembayaran Piutang — {rp(ticket.piutang!)}
@@ -339,14 +343,14 @@ export function ServisDetailPage() {
 
         {/* Sparepart */}
         {!done && (
-          <Card className="rounded-[1.5rem] border-transparent shadow-none lg:rounded-2xl lg:border-slate-200 lg:shadow-sm">
-            <CardHeader>
+          <Card className="rounded-[1.5rem] border-transparent shadow-none lg:rounded-[22px] lg:border-slate-200/80">
+            <CardHeader className="lg:px-6 lg:pt-5">
               <CardTitle>Sparepart dipakai</CardTitle>
               <Button variant="secondary" size="sm" className="h-11 rounded-2xl px-4 lg:h-8 lg:rounded-xl lg:px-3" disabled={busy} onClick={() => setPartModal(true)}>
                 <Plus /> Tambah
               </Button>
             </CardHeader>
-            <CardContent className="pt-2 text-xs text-slate-400">
+            <CardContent className="pt-2 text-xs leading-relaxed text-slate-400 lg:px-6 lg:pb-5">
               Stok berkurang otomatis dan biayanya masuk ke total nota.
             </CardContent>
           </Card>
@@ -354,8 +358,9 @@ export function ServisDetailPage() {
 
         {/* Aksi status */}
         {!done && (
-          <section className="rounded-[1.5rem] bg-white p-4 lg:rounded-none lg:bg-transparent lg:p-0" aria-label="Tindakan servis">
-            <p className="mb-3 text-xs font-bold text-brand-950 lg:hidden">Langkah berikutnya</p>
+          <section className="rounded-[1.5rem] bg-white p-4 lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:p-6" aria-label="Tindakan servis">
+            <p className="mb-3 text-xs font-bold text-brand-950 lg:text-sm">Langkah berikutnya</p>
+            <p className="mb-4 hidden text-xs leading-relaxed text-slate-500 lg:block">Lanjutkan proses setelah kondisi perangkat dan persetujuan pelanggan sudah sesuai.</p>
           <div className="flex flex-wrap gap-2">
             {NEXT_ACTIONS[ticket.status].filter((a) => a.to !== "diambil" || can(user.role, "sell")).map((a) => (
               <Button
@@ -367,11 +372,12 @@ export function ServisDetailPage() {
                 onClick={() => {
                   setBiayaJasa(ticketJasa(ticket));
                   setLangsungKerjakan(false);
+                  setNote("");
                   if (a.to === "diambil") {
                     setBayar(sisa);
                     setMethod("tunai");
                   }
-                  setStatusModal(a);
+                  setStatusModal({ ...a, ticket });
                 }}
               >
                 {a.label}
@@ -386,7 +392,7 @@ export function ServisDetailPage() {
                 setNote("");
                 setRefundDp(true);
                 setMethod("tunai");
-                setCancelModal(true);
+                setCancelModal(ticket);
               }}
             >
               <Ban /> Batal
@@ -394,27 +400,28 @@ export function ServisDetailPage() {
           </div>
           </section>
         )}
-
+        </div>
+        <div className="min-w-0 space-y-4 lg:space-y-5">
         {/* Foto */}
-        <Card className="rounded-[1.5rem] border-transparent shadow-none lg:rounded-2xl lg:border-slate-200 lg:shadow-sm">
-          <CardHeader>
+        <Card className="rounded-[1.5rem] border-transparent shadow-none lg:rounded-[22px] lg:border-slate-200/80">
+          <CardHeader className="lg:px-6 lg:pt-5">
             <CardTitle>Foto kondisi</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="lg:p-6">
             <PhotoManager refType="ticket" refId={ticket.id} canDelete={!done} serviceUndo disabled={busy} onBusyChange={setBusy} />
           </CardContent>
         </Card>
 
         {/* Riwayat */}
-        <Card className="rounded-[1.5rem] border-transparent shadow-none lg:rounded-2xl lg:border-slate-200 lg:shadow-sm">
-          <CardHeader>
+        <Card className="rounded-[1.5rem] border-transparent shadow-none lg:rounded-[22px] lg:border-slate-200/80">
+          <CardHeader className="lg:px-6 lg:pt-5">
             <CardTitle>Riwayat status</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ol className="space-y-4 lg:space-y-3">
+          <CardContent className="lg:p-6">
+            <ol className="space-y-4 lg:space-y-5">
               {[...ticket.history].reverse().map((h, i) => (
                 <li key={i} className="flex gap-3 text-sm">
-                  <div className="mt-1 flex size-4 shrink-0 items-center justify-center rounded-full bg-brand-50 lg:size-2 lg:bg-brand-500"><span className="size-1.5 rounded-full bg-brand-500 lg:hidden" /></div>
+                  <div className="mt-1 flex size-4 shrink-0 items-center justify-center rounded-full bg-brand-50"><span className="size-1.5 rounded-full bg-brand-500" /></div>
                   <div>
                     <TicketStatusTag status={h.status} />
                     <p className="mt-1 text-xs leading-relaxed text-slate-400 lg:mt-0.5">
@@ -427,6 +434,8 @@ export function ServisDetailPage() {
             </ol>
           </CardContent>
         </Card>
+        </div>
+        </div>
       </PageBody>
 
       {/* Modal transisi status */}
@@ -448,7 +457,7 @@ export function ServisDetailPage() {
                 <Row label="Total biaya" strong>{rp(ticketTotal({ ...ticket, biayaJasa, hargaFinal: true }))}</Row>
               </div>
               <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm">
-                <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-brand-600" checked={langsungKerjakan} onChange={(e) => setLangsungKerjakan(e.target.checked)} />
+                <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-accent-600" checked={langsungKerjakan} onChange={(e) => setLangsungKerjakan(e.target.checked)} />
                 <span>
                   <span className="block font-medium">Langsung kerjakan</span>
                   <span className="mt-1 block text-xs text-slate-500">Pilih jika pelanggan sudah menyetujui biaya. Setelah disimpan, status langsung menjadi Dikerjakan.</span>
@@ -458,7 +467,7 @@ export function ServisDetailPage() {
           )}
           {statusModal?.to === "diambil" && (
             <>
-              <div className="rounded-xl bg-emerald-50 p-4 text-sm">
+              <div className="rounded-xl bg-brand-50 p-4 text-sm">
                 <Row label="Total">{rp(total)}</Row>
                 {ticket.dp > 0 && <Row label="DP sudah dibayar">− {rp(ticket.dp)}</Row>}
                 <Row label="Sisa tagihan" strong>
@@ -543,7 +552,7 @@ export function ServisDetailPage() {
       </Modal>
 
       {/* Modal batal */}
-      <Modal busy={busy} open={cancelModal} onClose={() => setCancelModal(false)} title="Batalkan Servis">
+      <Modal busy={busy} open={!!cancelModal} onClose={() => setCancelModal(null)} title="Batalkan Servis">
         <div className="space-y-4">
           <Field label="Alasan pembatalan" required>
             <Textarea
@@ -584,7 +593,7 @@ export function ServisDetailPage() {
               if (!ticket || busy) return;
               setBusy(true);
               try {
-                await run(() => changeStatus(user, ticket, "batal", {
+                await run(() => changeStatus(user, cancelModal ?? ticket, "batal", {
                   note: note.trim(),
                   refundDp: ticket.dp > 0 ? refundDp : undefined,
                   method,
@@ -592,7 +601,7 @@ export function ServisDetailPage() {
                   pending: "Membatalkan servis…",
                   success: "Servis dibatalkan",
                 });
-                setCancelModal(false);
+                setCancelModal(null);
                 setNote("");
               } catch {
                 // The action hook displays the failure and preserves this form.
@@ -607,7 +616,7 @@ export function ServisDetailPage() {
       </Modal>
 
       {/* Modal edit info */}
-      <Modal busy={busy} open={editModal} onClose={() => setEditModal(false)} title="Edit Data Nota">
+      <Modal busy={busy} open={!!editModal} onClose={() => setEditModal(null)} title="Edit Data Nota">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Field label="Nama pelanggan" required>
@@ -679,11 +688,11 @@ export function ServisDetailPage() {
               if (busy) return;
               setBusy(true);
               try {
-                await run(() => updateTicketInfo(user, ticket, editF), {
+                await run(() => updateTicketInfo(user, editModal ?? ticket, editF), {
                   pending: "Menyimpan perubahan nota…",
                   success: "Data nota diperbarui",
                 });
-                setEditModal(false);
+                setEditModal(null);
               } catch {
                 // Keep the edited values available for correction.
               } finally {
@@ -697,7 +706,7 @@ export function ServisDetailPage() {
       </Modal>
 
       {/* Modal revisi harga */}
-      <Modal busy={busy} open={revisiModal} onClose={() => setRevisiModal(false)} title="Revisi Harga Jasa">
+      <Modal busy={busy} open={!!revisiModal} onClose={() => setRevisiModal(null)} title="Revisi Harga Jasa">
         <div className="space-y-4">
           <div className="rounded-xl bg-slate-50 p-4 text-sm">
             <Row label="Harga sekarang" strong>
@@ -710,7 +719,7 @@ export function ServisDetailPage() {
           <Field label="Alasan revisi" required hint="Contoh: setelah dibongkar ternyata IC power ikut rusak.">
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
-          <p className="text-xs text-amber-700">
+          <p className="text-xs text-accent-700">
             Sarankan konfirmasi ulang harga ke pelanggan via WA setelah revisi.
           </p>
           <Button
@@ -721,11 +730,11 @@ export function ServisDetailPage() {
               if (busy) return;
               setBusy(true);
               try {
-                await run(() => reviseJasa(user, ticket, revisiJasa, note.trim()), {
+                await run(() => reviseJasa(user, revisiModal ?? ticket, revisiJasa, note.trim()), {
                   pending: "Menyimpan revisi harga…",
                   success: "Revisi harga jasa tercatat",
                 });
-                setRevisiModal(false);
+                setRevisiModal(null);
                 setNote("");
               } catch {
                 // The action hook displays the failure and preserves this form.
@@ -746,8 +755,8 @@ export function ServisDetailPage() {
             className={cn(
               "rounded-xl p-4 text-sm",
               garansiHariLewat <= GARANSI_SERVIS_HARI
-                ? "bg-emerald-50 text-emerald-800"
-                : "bg-amber-50 text-amber-800",
+                ? "bg-brand-50 text-brand-800"
+                : "bg-accent-50 text-accent-800",
             )}
           >
             Unit diambil {garansiHariLewat} hari lalu — garansi servis{" "}
@@ -796,11 +805,11 @@ export function ServisDetailPage() {
       </Modal>
 
       {/* Modal bayar piutang */}
-      <Modal busy={busy} open={piutangModal} onClose={() => setPiutangModal(false)} title="Pembayaran Piutang">
+      <Modal busy={busy} open={!!piutangModal} onClose={() => setPiutangModal(null)} title="Pembayaran Piutang">
         <div className="space-y-4">
-          <div className="rounded-xl bg-red-50 p-4 text-sm">
+          <div className="rounded-xl bg-accent-50 p-4 text-sm">
             <Row label="Piutang saat ini" strong>
-              <span className="text-red-700">{rp(ticket.piutang ?? 0)}</span>
+              <span className="text-accent-800">{rp(ticket.piutang ?? 0)}</span>
             </Row>
           </div>
           <Field label="Dibayar sekarang" required>
@@ -820,11 +829,11 @@ export function ServisDetailPage() {
               if (busy) return;
               setBusy(true);
               try {
-                await run(() => payPiutang(user, ticket, bayarPiutang, method), {
+                await run(() => payPiutang(user, piutangModal ?? ticket, bayarPiutang, method), {
                   pending: "Mencatat pembayaran piutang…",
                   success: "Pembayaran piutang tercatat",
                 });
-                setPiutangModal(false);
+                setPiutangModal(null);
               } catch {
                 // The action hook displays the failure and preserves this form.
               } finally {

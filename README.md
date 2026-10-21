@@ -17,7 +17,8 @@ Bun yang dipakai CI: 1.4.3. Untuk menjalankan aplikasi dengan npm, gunakan `npm 
 
 ## Fitur
 
-- Ruang kerja mobile khusus: beranda operasional, navigasi bawah dengan tombol Nota baru, kartu servis/stok/pelanggan, dan form sentuh. Desktop tetap memakai sidebar. Lihat [panduan mobile](docs/MOBILE.md).
+- Ruang kerja mobile khusus: beranda operasional, navigasi bawah dengan tombol Nota baru, kartu servis/stok/pelanggan, dan form sentuh. Lihat [panduan mobile](docs/MOBILE.md).
+- Ruang kerja desktop: sidebar berkelompok, ringkasan dan antrean kerja di beranda, daftar berkolom, serta detail dua kolom. Desktop dan mobile memakai tema monokrom dengan aksen oranye yang sama. Lihat [panduan tema](docs/THEME.md).
 - Pelanggan: profil nama/WA, catatan internal, penanda langganan, pencarian, dan riwayat servis. Profil dapat dipilih saat membuat nota; perubahan profil tidak menulis ulang identitas nota lama.
 - Input nota servis ringkas: pencarian pelanggan dari riwayat, satu isian merek/tipe, pilihan keluhan, kelengkapan, dan foto awal wajib. Form penerimaan tanpa DP maupun estimasi biaya; draft tersimpan otomatis.
 - Servis lanjutan: status pengerjaan, harga final, pelunasan, piutang, garansi, WhatsApp, dan nota thermal 58 mm. DP/estimasi pada nota lama tetap terbaca.
@@ -46,6 +47,8 @@ Ikuti [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Database baru memakai [schema.sq
 Versi server dan frontend dalam rilis ini harus dipasang bersama. Pemulihan backup cloud dilakukan pada database oleh administrator; fitur import JSON hanya untuk mode lokal. Antrean dari versi lama yang belum memiliki payload transaksi dipertahankan untuk rekonsiliasi, bukan dikirim ulang secara membabi buta.
 
 Fitur pelanggan memerlukan migrasi `202610200007_customers.sql` di cloud. Data pelanggan ikut backup versi 4; backup versi 1–3 tanpa tabel pelanggan tetap dapat dipulihkan. Panduan operasional ada di [docs/CUSTOMERS.md](docs/CUSTOMERS.md).
+
+Pemeriksaan sebelum deployment menghasilkan **145 tes lulus** dan perbaikan alur servis, garansi, retur, stok, koreksi kas, backup, serta pencarian publik. Rilis ini juga memerlukan migrasi `202610210001_preflight_integrity.sql`. Bukti dan batas pengujian tercatat di [docs/PREFLIGHT.md](docs/PREFLIGHT.md); lanjutkan ke staging sebelum operasional produksi.
 
 ## Seed sparepart
 

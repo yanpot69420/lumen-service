@@ -2,7 +2,7 @@
 
 Pada lebar di bawah 1024 px, ruang kerja memakai susunan khusus mobile. Beranda, menu akun, ringkasan kas, serta hierarki kartu servis/stok/pelanggan dirancang untuk penggunaan dengan sentuhan. Desktop mulai 1024 px tetap memakai sidebar dan susunan kerja yang lebih rapat.
 
-- Identitas mobile: latar ivory, permukaan putih, warna gelap, aksen amber, kartu membulat, serta judul dan informasi utama yang lebih jelas.
+- Identitas mobile: tema monokrom dengan latar abu-abu terang, permukaan putih, warna dasar hitam/abu-abu, aksen oranye, kartu membulat, serta judul dan informasi utama yang lebih jelas. Tema dan ikon PWA konsisten dengan desktop; panduan warna berada di [THEME.md](THEME.md).
 - Navigasi bawah: Beranda, Servis, tombol utama Nota baru, Stok, dan Menu. Kas serta pengelolaan lainnya tersedia melalui Menu sesuai peran.
 - Beranda: ringkasan servis, pintasan pelanggan/stok, pengingat yang dapat dibuka, dan antrean berdasarkan pembaruan paling lama. Pintasan status serta restok langsung mengaktifkan filter yang sesuai.
 - Nota baru: empat bagian dengan penanda kelengkapan, pilihan yang mudah disentuh, tombol simpan tetap terlihat, dan snackbar di atas area tindakan. Pembukaan awal di mobile tidak memfokuskan input secara otomatis. Tombol utama dapat membuka nota berikutnya setelah submit tanpa menghapus draft yang sedang dikerjakan.

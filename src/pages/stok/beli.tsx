@@ -131,7 +131,7 @@ export function BeliUnitPage() {
         }
       />
       <PageBody>
-        {restored && <p className="rounded-xl bg-sky-50 p-3 text-sm text-sky-800">Draft pembelian terakhir dipulihkan, termasuk foto yang sudah tersimpan.</p>}
+        {restored && <p className="rounded-xl bg-brand-50 p-3 text-sm text-brand-800">Draft pembelian terakhir dipulihkan, termasuk foto yang sudah tersimpan.</p>}
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
           <p className="text-sm font-semibold">Data unit</p>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -151,7 +151,7 @@ export function BeliUnitPage() {
                 onChange={(e) => setF({ ...f, imei: e.target.value.replace(/\D/g, "") })}
               />
               {imeiSuspect && (
-                <span className="mt-1 block text-xs font-medium text-amber-600">
+                <span className="mt-1 block text-xs font-medium text-accent-600">
                   ⚠ Digit cek IMEI tidak cocok — kemungkinan salah ketik, periksa lagi.
                 </span>
               )}

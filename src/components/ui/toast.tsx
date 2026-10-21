@@ -166,9 +166,9 @@ export function ToastProvider({ children }: { children: ReactNode; }) {
   }, [toast]);
 
   const icons: Record<ToastKind, ReactNode> = {
-    success: <CheckCircle2 className="size-4 text-emerald-400" />,
+    success: <CheckCircle2 className="size-4 text-brand-200" />,
     error: <AlertTriangle className="size-4 text-red-400" />,
-    info: <Info className="size-4 text-sky-400" />,
+    info: <Info className="size-4 text-brand-200" />,
   };
 
   return (
@@ -182,10 +182,10 @@ export function ToastProvider({ children }: { children: ReactNode; }) {
               "pointer-events-auto flex w-full max-w-lg shrink-0 items-center gap-2 rounded-xl bg-brand-950 px-3 py-2.5 text-sm text-white shadow-lg",
             )}
           >
-            <span className="shrink-0" aria-hidden="true">{item.busy ? <LoaderCircle className="size-4 animate-spin text-sky-400" /> : icons[item.kind]}</span>
+            <span className="shrink-0" aria-hidden="true">{item.busy ? <LoaderCircle className="size-4 animate-spin text-accent-400" /> : icons[item.kind]}</span>
             <span className="min-w-0 flex-1 break-words">{item.busy ? "Membatalkan…" : item.message}</span>
             {item.action && (
-              <button type="button" disabled={item.busy} onClick={() => void act(item.id)} className="shrink-0 rounded-lg px-2 py-2 font-semibold text-amber-300 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 disabled:opacity-50">
+              <button type="button" disabled={item.busy} onClick={() => void act(item.id)} className="shrink-0 rounded-lg px-2 py-2 font-semibold text-accent-300 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-300 disabled:opacity-50">
                 {item.action.label}
               </button>
             )}

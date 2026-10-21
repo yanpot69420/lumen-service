@@ -46,8 +46,8 @@ export function Kpi({
       <p
         className={cn(
           "ui-kpi-value mt-1 break-words text-lg font-bold tabular-nums",
-          tone === "positive" && "text-emerald-600",
-          tone === "negative" && "text-red-600",
+          tone === "positive" && "text-brand-700",
+          tone === "negative" && "text-brand-700",
           tone === "accent" && "text-accent-600",
         )}
       >

@@ -29,7 +29,7 @@ export async function restoreBackup(input: unknown) {
   if (await db.outbox.count()) throw new Error("Masih ada perubahan cloud tertunda. Simpan backup dan selesaikan sinkronisasi dahulu.");
   const usernames = new Set<string>();
   const users: User[] = data.users.map((u) => {
-    if (!u.pinHash || !u.salt) throw new Error("Backup lokal tidak memiliki kredensial login lengkap");
+    if (typeof u.pinHash !== "string" || !u.pinHash.trim() || typeof u.salt !== "string" || !u.salt.trim()) throw new Error("Backup lokal tidak memiliki kredensial login lengkap");
     const base = u.username || usernameSlug(u.name) || "user";
     let username = base; let i = 1;
     while (usernames.has(username)) username = `${base}${++i}`;

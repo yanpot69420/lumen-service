@@ -20,6 +20,24 @@ export function diambilAt(t: Ticket): number | undefined {
   return undefined;
 }
 
+// Compare the bill the operator actually reviewed, excluding sync metadata.
+// A newer price/part edit must not silently become an unexpected receivable.
+function billingSnapshot(ticket: Ticket) {
+  return JSON.stringify([ticket.estimasi, ticket.biayaJasa, ticket.hargaFinal ?? ticket.biayaJasa > 0, ticket.dp, ticket.partsUsed.map((part) => [part.id, part.partId, part.nama, part.qty, part.harga, part.modal])]);
+}
+
+function infoSnapshot(ticket: Pick<Ticket, "customerName" | "phone" | "brand" | "model" | "keluhan" | "kelengkapan">) {
+  return JSON.stringify([ticket.customerName, ticket.phone, ticket.brand, ticket.model, ticket.keluhan, ticket.kelengkapan]);
+}
+
+async function warrantySource(id: string): Promise<Ticket> {
+  const source = await db.tickets.get(id);
+  if (!source) throw new Error("Nota asal garansi tidak ditemukan");
+  if (source.garansiDari) throw new Error("Klaim garansi harus tertaut ke nota servis asal");
+  if (source.status !== "diambil") throw new Error("Klaim garansi hanya untuk nota yang sudah diambil");
+  return source;
+}
+
 export async function createTicket(
   user: User,
   data: Pick<
@@ -45,6 +63,7 @@ export async function createTicket(
     amount(data.estimasi); amount(data.dp);
     if (data.dp > 0 && !can(user.role, "sell")) throw new Error("Penerimaan DP hanya untuk Kasir/Owner/Head Ops");
     if (!data.customerName.trim() || !data.brand.trim() || !data.keluhan.trim()) throw new Error("Data servis belum lengkap");
+    if (garansiDari) await warrantySource(garansiDari);
     if (!garansiDari && !photos.length && (!draftRefId || !await db.photos.where({ refType: "draft", refId: draftRefId }).count())) throw new Error("Foto kondisi HP wajib ditambahkan sebelum menyimpan nota");
     const customer = await resolveTicketCustomer(user, data.customerName, data.phone, data.customerId);
     const noNota = await nextNota("ticket");
@@ -117,6 +136,7 @@ export async function createGaransiClaim(
   keluhan: string,
 ): Promise<Ticket> {
   return operation(user, "service", async (user) => {
+    source = await warrantySource(source.id);
     const t = await createTicket(
       user,
       {
@@ -162,6 +182,7 @@ export async function changeStatus(
     const previousStatus = ticket.status;
     const fresh = await db.tickets.get(ticket.id);
     if (!fresh || fresh.status !== previousStatus) throw new Error("Status servis sudah berubah. Periksa nota terbaru.");
+    if (["konfirmasi", "dikerjakan", "diambil", "batal"].includes(status) && billingSnapshot(fresh) !== billingSnapshot(ticket)) throw new Error("Rincian biaya servis sudah berubah. Periksa nota terbaru sebelum melanjutkan.");
     ticket = fresh;
     if (status !== "batal" && !NEXT_ACTIONS[ticket.status].some((a) => a.to === status)) throw new Error("Perubahan status tidak diizinkan");
     if (["diambil", "batal"].includes(ticket.status)) throw new Error("Nota sudah ditutup");
@@ -316,6 +337,7 @@ export async function reviseJasa(
     amount(newJasa); if (!reason.trim()) throw new Error("Alasan wajib diisi");
     const fresh = await db.tickets.get(ticket.id);
     if (!fresh || !["konfirmasi", "dikerjakan", "selesai"].includes(fresh.status)) throw new Error("Harga nota tidak dapat direvisi");
+    if (fresh.status !== ticket.status || billingSnapshot(fresh) !== billingSnapshot(ticket)) throw new Error("Harga atau rincian servis sudah berubah. Periksa nota terbaru sebelum merevisi.");
     ticket = fresh;
     const old = ticketJasa(ticket);
     await db.tickets.update(ticket.id, {
@@ -354,6 +376,7 @@ export async function updateTicketInfo(
   return operation(user, "service", async (user) => {
     const fresh = await db.tickets.get(ticket.id);
     if (!fresh) throw new Error("Nota tidak ditemukan");
+    if (infoSnapshot(fresh) !== infoSnapshot(ticket)) throw new Error("Data nota sudah berubah. Periksa nota terbaru sebelum menyimpan ulang.");
     ticket = fresh;
     if (!patch.customerName.trim() || !patch.brand.trim() || !patch.keluhan.trim()) throw new Error("Data nota belum lengkap");
     const changes: string[] = [];

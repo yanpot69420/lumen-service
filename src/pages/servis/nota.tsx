@@ -54,16 +54,26 @@ export function NotaPrintPage() {
   const store = useStore();
 
   const ticket = useLiveQuery(
-    () => (type === "servis" ? db.tickets.get(id!) : undefined),
+    async () => (type === "servis" && id ? (await db.tickets.get(id)) ?? null : null),
     [type, id],
   );
   const unit = useLiveQuery(
-    () => (type === "unit" ? db.units.get(id!) : undefined),
+    async () => (type === "unit" && id ? (await db.units.get(id)) ?? null : null),
     [type, id],
   );
 
   const data = type === "servis" ? ticket : unit;
-  if (!data) return null;
+  const validType = type === "servis" || type === "unit";
+  if (!validType || data === null) return (
+    <div className="flex min-h-dvh items-center justify-center bg-slate-100 p-6">
+      <div className="max-w-sm rounded-2xl bg-white p-6 text-center">
+        <h1 className="text-lg font-bold">Nota tidak ditemukan</h1>
+        <p className="mt-2 text-sm text-slate-500">Periksa kembali tautan atau buka nota melalui daftar transaksi.</p>
+        <Button className="mt-5" onClick={() => nav("/app/beranda")}><ArrowLeft /> Kembali ke beranda</Button>
+      </div>
+    </div>
+  );
+  if (data === undefined) return <div className="min-h-dvh bg-slate-100 p-6 text-center text-sm text-slate-500" role="status">Memuat nota…</div>;
 
   // Label kecil untuk ditempel di unit — identitas cepat bagi teknisi.
   if (labelMode && ticket) {
@@ -170,7 +180,7 @@ export function NotaPrintPage() {
             )}
             <Line />
             <NotaRow
-              l={ticket.biayaJasa ? "Biaya jasa" : "Estimasi"}
+              l={(ticket.hargaFinal ?? ticket.biayaJasa > 0) ? "Biaya jasa" : "Estimasi"}
               r={rp(ticketJasa(ticket))}
             />
             {ticket.partsUsed.map((p, i) => (

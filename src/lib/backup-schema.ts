@@ -43,7 +43,7 @@ export function validateBackup(raw: unknown): BackupPayload {
         parts: ["stok", "hargaModal", "hargaJual", "minStok"], cash: ["amount", "at"], dayCloses: ["counted", "closedAt"], corrections: ["at"], audit: ["at"], photos: ["createdAt"],
       };
       if (!strings[table].every((k) => text(r[k])) || !numbers[table].every((k) => number(r[k]))) fail(`kolom ${table} rusak`);
-      if (table === "users" && (!choice(r.role, ["owner", "headops", "kasir", "teknisi"]) || !choice(r.active, [0, 1]))) fail("peran pengguna rusak");
+      if (table === "users" && (!choice(r.role, ["owner", "headops", "kasir", "teknisi"]) || !choice(r.active, [0, 1]) || !choice(r.pinVer, [undefined, 1, 2]) || (r.username !== undefined && !filled(r.username)))) fail("peran atau kredensial pengguna rusak");
       if (table === "customers" && (
         !filled(r.name) || (r.name as string).length > 120 || typeof r.isRegular !== "boolean" || (r.notes as string).length > 2000 ||
         (r.phone as string).length > 40 || !/^\+?[\d\s()-]*$/.test(r.phone as string) ||
@@ -53,12 +53,13 @@ export function validateBackup(raw: unknown): BackupPayload {
         if (!choice(r.status, ["masuk", "dicek", "konfirmasi", "dikerjakan", "selesai", "diambil", "batal"]) || !Array.isArray(r.history) || !Array.isArray(r.partsUsed) || !Array.isArray(r.kelengkapan)) fail("tiket rusak");
         if (!(r.history as unknown[]).every((h) => object(h) && number(h.at) && text(h.by) && choice(h.status, ["masuk", "dicek", "konfirmasi", "dikerjakan", "selesai", "diambil", "batal"]))) fail("riwayat tiket rusak");
         if (!(r.partsUsed as unknown[]).every((p) => object(p) && filled(p.partId) && text(p.nama) && number(p.qty) && (p.qty as number) > 0 && number(p.harga) && number(p.modal))) fail("part tiket rusak");
-        if (!(r.kelengkapan as unknown[]).every(text) || (r.piutang !== undefined && !number(r.piutang))) fail("rincian tiket rusak");
+        if (!(r.kelengkapan as unknown[]).every(text) || (r.piutang !== undefined && !number(r.piutang)) || !choice(r.hargaFinal, [undefined, true, false]) || (r.garansiDari !== undefined && !filled(r.garansiDari))) fail("rincian tiket rusak");
       }
-      if (table === "units" && !choice(r.status, ["stok", "terjual"])) fail("status unit rusak");
+      if (table === "units" && (!choice(r.status, ["stok", "terjual"]) || (r.soldAt !== undefined && !number(r.soldAt)) || (r.soldPrice !== undefined && !number(r.soldPrice)))) fail("status atau penjualan unit rusak");
       if (table === "parts" && !choice(r.kategori, ["sparepart", "aksesoris"])) fail("kategori part rusak");
       if (table === "parts" && r.brand !== undefined && (!text(r.brand) || !normalizePartBrand(r.brand as string))) fail("merek part rusak");
       if (table === "cash" && (!choice(r.type, ["in", "out"]) || !choice(r.category, ["servis", "jual_unit", "retur_unit", "jual_aksesoris", "beli_unit", "restok_part", "operasional", "prive", "modal_masuk", "lainnya"]) || !choice(r.method, [undefined, "tunai", "qris", "transfer"]) || !choice(r.locked, [0, 1]) || !choice(r.voided, [0, 1]))) fail("jurnal kas rusak");
+      if (table === "cash" && r.meta !== undefined && (!object(r.meta) || (r.meta.modal !== undefined && !number(r.meta.modal)) || (r.meta.qty !== undefined && (!number(r.meta.qty) || (r.meta.qty as number) === 0)) || !choice(r.meta.paymentKind, [undefined, "dp", "settlement", "piutang", "refund"]))) fail("snapshot jurnal kas rusak");
       if (table === "dayCloses" && (![r.expected, r.selisih].every((v) => typeof v === "number" && Number.isSafeInteger(v)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(r.dayKey)))) fail("tutup kas rusak");
       if (table === "corrections" && (!choice(r.status, ["pending", "approved", "rejected"]) || ![r.before, r.after].every((v) => object(v) && number(v.amount) && text(v.note) && choice(v.voided, [0, 1])))) fail("koreksi rusak");
       if (table === "photos" && (!choice(r.refType, ["ticket", "unit", "unit-ktp", "draft"]) || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(String(r.dataUrl)))) fail("foto rusak");
@@ -74,6 +75,9 @@ export function validateBackup(raw: unknown): BackupPayload {
   if (new Set(identities).size !== identities.length) fail("pelanggan duplikat");
   const tickets = new Set(result.tickets.map((r) => r.id));
   const units = new Set(result.units.map((r) => r.id));
+  if (result.tickets.some((r) => r.garansiDari !== undefined && (!tickets.has(r.garansiDari) || r.garansiDari === r.id))) fail("referensi garansi hilang atau tidak valid");
+  const stockImeis = result.units.filter((r) => r.status === "stok").map((r) => r.imei);
+  if (new Set(stockImeis).size !== stockImeis.length) fail("IMEI ganda pada stok aktif");
   if (result.photos.some((p) => p.refType === "ticket" ? !tickets.has(p.refId) : p.refType !== "draft" && !units.has(p.refId))) fail("referensi foto hilang");
   const notas = result.tickets.map((r) => r.noNota);
   const codes = result.units.map((r) => r.kode);

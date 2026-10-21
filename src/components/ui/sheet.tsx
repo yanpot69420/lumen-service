@@ -10,14 +10,16 @@ export function Sheet({
   title,
   children,
   wide,
+  busy = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   wide?: boolean;
+  busy?: boolean;
 }) {
-  const ref = useDialog(open, onClose);
+  const ref = useDialog(open, onClose, busy);
   const titleId = useId();
 
   if (!open) return null;
@@ -25,7 +27,7 @@ export function Sheet({
     <div className="fixed inset-0 z-50">
       <div
         className="absolute inset-0 bg-slate-950/50"
-        onClick={onClose}
+        onClick={() => { if (!busy) onClose(); }}
         aria-hidden
       />
       <div
@@ -34,8 +36,9 @@ export function Sheet({
         tabIndex={-1}
         aria-labelledby={titleId}
         aria-modal
+        aria-busy={busy}
         className={cn(
-          "absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] shadow-xl",
+          "ui-sheet absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] shadow-xl",
           "lg:inset-y-0 lg:left-auto lg:right-0 lg:max-h-none lg:rounded-none lg:rounded-l-2xl lg:pb-0",
           wide ? "lg:w-[560px]" : "lg:w-[420px]",
         )}
@@ -45,13 +48,14 @@ export function Sheet({
           <h2 id={titleId} className="text-base font-semibold">{title}</h2>
           <button
             onClick={onClose}
-            className="flex size-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 lg:size-8"
+            disabled={busy}
+            className="flex size-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 lg:size-8"
             aria-label="Tutup"
           >
             <X className="size-5" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+        <div className="flex-1 overflow-y-auto p-5"><fieldset disabled={busy} className="min-w-0">{children}</fieldset></div>
       </div>
     </div>
   );

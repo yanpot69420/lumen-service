@@ -20,8 +20,8 @@ export default defineConfig({
         start_url: "/app",
         scope: "/",
         display: "standalone",
-        background_color: "#0b1220",
-        theme_color: "#0b1220",
+        background_color: "#f5f5f5",
+        theme_color: "#171717",
         icons: [
           { src: "/pwa-192.png", sizes: "192x192", type: "image/png" },
           { src: "/pwa-512.png", sizes: "512x512", type: "image/png" },

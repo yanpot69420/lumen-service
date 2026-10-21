@@ -24,7 +24,7 @@ import { validateBackup } from "@/lib/backup-schema";
 import { USERNAME_RE, usernameSlug } from "@/lib/username";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Download, KeyRound, Plus, Upload, UserX } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function PengaturanPage() {
   const user = useUser();
@@ -128,12 +128,23 @@ function UsersSection() {
     pin: "",
   });
   const [newPin, setNewPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+
+  async function saveAccountChange(action: () => Promise<void>) {
+    if (submitting.current) return;
+    submitting.current = true;
+    setBusy(true);
+    try { await action(); }
+    catch (error) { toast(error instanceof Error ? error.message : "Perubahan akun gagal disimpan", "error"); }
+    finally { submitting.current = false; setBusy(false); }
+  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Pengguna</CardTitle>
-        <Button variant="secondary" size="sm" onClick={() => {
+        <Button variant="secondary" size="sm" disabled={busy} onClick={() => {
           setF({ name: "", username: "", usernameTouched: false, role: "kasir", pin: "" });
           setFormOpen(true);
         }}>
@@ -161,6 +172,7 @@ function UsersSection() {
               </p>
             </div>
             <button
+              disabled={busy}
               onClick={() => {
                 setNewPin("");
                 setPinTarget(u);
@@ -172,6 +184,7 @@ function UsersSection() {
             </button>
             {u.id !== me.id && u.active === 1 && (
               <button
+                disabled={busy}
                 onClick={() => setDeactTarget(u)}
                 className="text-slate-300 hover:text-red-500"
                 aria-label="Nonaktifkan"
@@ -186,7 +199,7 @@ function UsersSection() {
         </p>
       </CardContent>
 
-      <Sheet open={formOpen} onClose={() => setFormOpen(false)} title="Tambah Pengguna">
+      <Sheet open={formOpen} onClose={() => setFormOpen(false)} title="Tambah Pengguna" busy={busy}>
         <div className="space-y-4">
           <Field label="Nama" required>
             <Input
@@ -238,22 +251,23 @@ function UsersSection() {
             size="lg"
             className="w-full"
             disabled={
+              busy ||
               !f.name.trim() ||
               !USERNAME_RE.test(f.username) ||
               !/^\d{4,6}$/.test(f.pin)
             }
-            onClick={async () => {
+            onClick={() => saveAccountChange(async () => {
               await createAccount(me, f);
               toast("Pengguna ditambahkan");
               setFormOpen(false);
-            }}
+            })}
           >
             Simpan
           </Button>
         </div>
       </Sheet>
 
-      <Sheet open={!!pinTarget} onClose={() => setPinTarget(null)} title={`Reset PIN — ${pinTarget?.name}`}>
+      <Sheet open={!!pinTarget} onClose={() => setPinTarget(null)} title={`Reset PIN — ${pinTarget?.name}`} busy={busy}>
         <div className="space-y-4">
           <Field label="PIN baru (4–6 digit)" required>
             <Input
@@ -267,13 +281,13 @@ function UsersSection() {
           <Button
             size="lg"
             className="w-full"
-            disabled={!/^\d{4,6}$/.test(newPin)}
-            onClick={async () => {
+            disabled={busy || !/^\d{4,6}$/.test(newPin)}
+            onClick={() => saveAccountChange(async () => {
               if (!pinTarget) return;
               await resetAccountPin(me, pinTarget.id, newPin);
               toast("PIN direset");
               setPinTarget(null);
-            }}
+            })}
           >
             Reset PIN
           </Button>
@@ -285,13 +299,14 @@ function UsersSection() {
         title={`Nonaktifkan ${deactTarget?.name}?`}
         confirmLabel="Nonaktifkan"
         destructive
+        busy={busy}
         onCancel={() => setDeactTarget(null)}
-        onConfirm={async () => {
+        onConfirm={() => saveAccountChange(async () => {
           if (!deactTarget) return;
           await deactivateAccount(me, deactTarget.id);
           toast("Pengguna dinonaktifkan");
           setDeactTarget(null);
-        }}
+        })}
       >
         Pengguna tidak bisa login lagi, tapi riwayat aktivitasnya tetap tersimpan.
       </ConfirmDialog>
@@ -304,6 +319,7 @@ function RecoverySection() {
   const toast = useToast();
   const [code, setCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
   const hasCode = useLiveQuery(
     async () => { const u = await db.users.get(user.id); return !!(u?.recoveryHash || u?.recoveryActive); },
     [user.id],
@@ -324,11 +340,16 @@ function RecoverySection() {
           variant="outline"
           disabled={busy}
           onClick={async () => {
+            if (submitting.current) return;
+            submitting.current = true;
             setBusy(true);
             try {
               const c = await renewRecoveryCode(user);
               setCode(c);
+            } catch (error) {
+              toast(error instanceof Error ? error.message : "Kode pemulihan gagal dibuat", "error");
             } finally {
+              submitting.current = false;
               setBusy(false);
             }
           }}

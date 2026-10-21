@@ -85,6 +85,10 @@ async function undoInsideTransaction(user: User, id: string, beforeUndo?: () => 
     // A newly created profile/ticket may already be used by a later action.
     // Never leave a service, cash entry, photo or warranty without its parent.
     const removed = (table: string, key: string) => receipt.changes.some((change) => change.table === table && change.key === key && change.before === null);
+    for (const change of receipt.changes.filter((change) => change.table === "tickets" && change.before && change.before.status !== "diambil" && change.after?.status === "diambil")) {
+      const claims = await db.tickets.filter((ticket) => ticket.garansiDari === change.key).toArray();
+      if (claims.some((ticket) => !removed("tickets", ticket.id))) throw new Error("Nota sudah menjadi sumber klaim garansi. Batalkan klaim garansi terlebih dahulu sebelum membatalkan pengambilan.");
+    }
     for (const change of receipt.changes.filter((change) => !change.before && change.after)) {
       if (change.table === "customers") {
         const dependents = await db.tickets.where("customerId").equals(change.key).toArray();

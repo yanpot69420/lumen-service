@@ -25,9 +25,9 @@ const KELENGKAPAN = ["Charger", "Kartu SIM", "Memory Card", "Casing", "SIM Tray"
 const DRAFT_KEY = "draftServisBaru";
 const DRAFT_PHOTO_REF = { refType: "draft" as const, refId: "servis-baru" };
 const EMPTY = { customerId: "", customerName: "", phone: "", device: "", keluhan: "" };
-const SECTION = "space-y-4 rounded-[1.5rem] border border-transparent bg-white p-5 lg:space-y-3 lg:rounded-2xl lg:border-slate-200 lg:p-4";
-const SECTION_TITLE = "flex items-center gap-3 text-base font-bold text-brand-950 lg:gap-1 lg:text-sm";
-const SECTION_NUMBER = "inline-flex size-8 items-center justify-center rounded-xl bg-[#f4f5f0] text-xs text-brand-700 lg:inline lg:size-auto lg:rounded-none lg:bg-transparent lg:text-sm lg:text-slate-900";
+const SECTION = "space-y-4 rounded-[1.5rem] border border-transparent bg-white p-5 lg:rounded-[22px] lg:border-slate-200/80 lg:p-6";
+const SECTION_TITLE = "flex items-center gap-3 text-base font-bold text-brand-950";
+const SECTION_NUMBER = "inline-flex size-8 items-center justify-center rounded-xl bg-slate-50 text-xs text-brand-700";
 let activeIntakeSession: symbol | undefined;
 type Draft = { f: typeof EMPTY; kelengkapan: string[]; complaints: string[] };
 const emptyDraft = (): Draft => ({ f: { ...EMPTY }, kelengkapan: [], complaints: [] });
@@ -340,10 +340,10 @@ export function ServisBaruPage() {
           <button
             key={c.id ?? `${c.customerName}|${c.phone}`}
             type="button"
-            className="flex min-h-12 w-full items-center justify-between gap-2 px-3 py-3 text-left text-sm hover:bg-slate-50 focus:bg-sky-50 lg:min-h-0 lg:py-2"
+            className="flex min-h-12 w-full items-center justify-between gap-2 px-3 py-3 text-left text-sm hover:bg-slate-50 focus:bg-brand-50 lg:min-h-0 lg:py-2"
             onClick={() => chooseCustomer(c)}
           >
-            <span className="font-medium">{c.customerName}{c.isRegular && <span className="ml-2 text-xs text-amber-700">Langganan</span>}</span>
+            <span className="font-medium">{c.customerName}{c.isRegular && <span className="ml-2 text-xs text-accent-700">Langganan</span>}</span>
             <span className="text-xs text-slate-500">{c.phone || "Tanpa WA"}</span>
           </button>
         ))}
@@ -357,12 +357,13 @@ export function ServisBaruPage() {
     <>
       <PageHeader
         title="Nota Servis Baru"
+        subtitle="Catat pelanggan dan kondisi perangkat saat diterima."
         back={<Link to="/app/servis" aria-label="Kembali ke daftar servis" className="inline-flex size-11 items-center justify-center rounded-2xl bg-white text-slate-600 hover:text-slate-900 lg:size-auto lg:rounded-none lg:bg-transparent lg:text-slate-400"><ArrowLeft className="size-5" /></Link>}
       />
       <PageBody>
         {created ? (
-          <div className="mx-auto max-w-lg space-y-5 rounded-[1.75rem] border border-emerald-200 bg-white px-5 py-8 text-center lg:rounded-2xl lg:p-6" role="status">
-            <span className="mx-auto flex size-16 items-center justify-center rounded-[1.5rem] bg-emerald-50 lg:size-auto lg:bg-transparent"><CheckCircle2 className="size-10 text-emerald-600" /></span>
+          <div className="mx-auto max-w-lg space-y-5 rounded-[1.75rem] border border-brand-200 bg-white px-5 py-8 text-center lg:rounded-2xl lg:p-6" role="status">
+            <span className="mx-auto flex size-16 items-center justify-center rounded-[1.5rem] bg-brand-50 lg:size-auto lg:bg-transparent"><CheckCircle2 className="size-10 text-brand-600" /></span>
             <div>
               <h2 className="text-xl font-bold lg:text-lg">Nota berhasil disimpan</h2>
               <p className="mt-1 font-semibold text-brand-700">{created.noNota}</p>
@@ -381,6 +382,12 @@ export function ServisBaruPage() {
           </div>
         ) : (
           <form className="space-y-4 pb-24" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+            <section className="hidden gap-5 rounded-[22px] bg-brand-950 p-6 text-white lg:flex lg:flex-col xl:flex-row xl:items-center xl:justify-between" aria-label="Persiapan nota baru desktop">
+              <div className="flex items-center gap-4"><span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-accent-400"><ClipboardList className="size-6" /></span><div><h2 className="text-lg font-bold">Penerimaan perangkat</h2><p className="mt-1 text-xs text-white/55">Lengkapi empat bagian berikut. Draft tersimpan otomatis.</p></div></div>
+              <div className="flex flex-wrap gap-2" aria-label={`${completedSections.filter(Boolean).length} dari 4 bagian lengkap`}>
+                {["Pelanggan", "Perangkat", "Keluhan", "Foto"].map((label, i) => <span key={label} className={cn("inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs", completedSections[i] ? "bg-accent-400/15 text-accent-400" : "bg-white/[0.06] text-white/45")}><span className="inline-flex size-4 items-center justify-center text-[10px] font-semibold">{completedSections[i] ? <Check className="size-3.5" /> : i + 1}</span>{label}</span>)}
+              </div>
+            </section>
             <section className="rounded-[1.75rem] bg-brand-950 p-5 text-white lg:hidden" aria-label="Persiapan nota baru">
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
@@ -398,14 +405,14 @@ export function ServisBaruPage() {
               </div>
             </section>
             {restored && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800">
                 Draft terakhir dipulihkan.
                 <button type="button" disabled={busy || photoBusy || undoBusy} onClick={() => void clearDraft()} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2 font-semibold underline lg:min-h-0 lg:px-0"><Trash2 className="size-3.5" /> Buang draft</button>
               </div>
             )}
-            <fieldset disabled={busy || undoBusy} className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <fieldset disabled={busy || undoBusy} className="grid min-w-0 gap-4 lg:grid-cols-2 lg:gap-5">
               <section className={SECTION} aria-labelledby="intake-customer">
-                <h2 id="intake-customer" className={SECTION_TITLE}><span className={SECTION_NUMBER}>1<span className="hidden lg:inline">.</span></span> Pelanggan{completedSections[0] && <Check className="ml-auto size-4 text-emerald-600 lg:hidden" />}</h2>
+                <h2 id="intake-customer" className={SECTION_TITLE}><span className={SECTION_NUMBER}>1</span> Pelanggan{completedSections[0] && <Check className="ml-auto size-4 text-brand-600" />}</h2>
                 <div>
                   <Field label="No. WhatsApp" hint="Ketik nomor atau cari pelanggan lewat nama.">
                     <Input ref={phoneInput} type="tel" autoComplete="off" placeholder="08xxxxxxxxxx" value={f.phone} onFocus={() => setSearch("phone")} onChange={(e) => changePhone(e.target.value)} onBlur={() => void flushDraft().catch(() => {})} onKeyDown={(e) => { if (e.key === "Escape") setSearch(null); }} />
@@ -421,7 +428,7 @@ export function ServisBaruPage() {
                 {selectedCustomer && <p className="text-xs text-brand-700">{selectedCustomer.isRegular ? "Pelanggan langganan" : "Profil pelanggan terpilih"} · <Link className="underline" to={`/app/pelanggan/${selectedCustomer.id}`}>Lihat profil</Link></p>}
               </section>
               <section className={SECTION} aria-labelledby="intake-device" onFocus={() => setSearch(null)}>
-                <h2 id="intake-device" className={SECTION_TITLE}><span className={SECTION_NUMBER}>2<span className="hidden lg:inline">.</span></span> Perangkat & kelengkapan{completedSections[1] && <Check className="ml-auto size-4 text-emerald-600 lg:hidden" />}</h2>
+                <h2 id="intake-device" className={SECTION_TITLE}><span className={SECTION_NUMBER}>2</span> Perangkat & kelengkapan{completedSections[1] && <Check className="ml-auto size-4 text-brand-600" />}</h2>
                 <Field label="Merek / tipe HP" required hint="Pilih dari riwayat atau ketik perangkat baru.">
                   <Input required list="intake-devices" autoComplete="off" placeholder="Contoh: Samsung A54" value={f.device} onChange={(e) => editDraft({ ...draft.current, f: { ...draft.current.f, device: e.target.value } }, "Perangkat diperbarui di draft")} onBlur={() => void flushDraft().catch(() => {})} />
                   <datalist id="intake-devices">{deviceOptions.map((name) => <option key={name} value={name} />)}</datalist>
@@ -437,7 +444,7 @@ export function ServisBaruPage() {
                 </div>
               </section>
               <section className={SECTION} aria-labelledby="intake-complaint" onFocus={() => setSearch(null)}>
-                <h2 id="intake-complaint" className={SECTION_TITLE}><span className={SECTION_NUMBER}>3<span className="hidden lg:inline">.</span></span> Keluhan <span className="text-red-500">*</span>{completedSections[2] && <Check className="ml-auto size-4 text-emerald-600 lg:hidden" />}</h2>
+                <h2 id="intake-complaint" className={SECTION_TITLE}><span className={SECTION_NUMBER}>3</span> Keluhan <span className="text-red-500">*</span>{completedSections[2] && <Check className="ml-auto size-4 text-brand-600" />}</h2>
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Keluhan umum">
                   {COMPLAINTS.map((c) => (
                     <button key={c} type="button" aria-pressed={complaints.includes(c)} onClick={() => { const xs = draft.current.complaints; editDraft({ ...draft.current, complaints: xs.includes(c) ? xs.filter((x) => x !== c) : [...xs, c] }, "Keluhan diperbarui di draft"); void flushDraft().catch(() => {}); }} className={cn("min-h-11 rounded-2xl border px-3 py-2 text-xs font-medium lg:min-h-0 lg:rounded-full", complaints.includes(c) ? "border-brand-950 bg-brand-950 text-white" : "border-slate-200 text-slate-600")}>{c}</button>
@@ -448,13 +455,13 @@ export function ServisBaruPage() {
                 </Field>
               </section>
               <section className={SECTION} aria-labelledby="intake-photo" onFocus={() => setSearch(null)}>
-                <h2 id="intake-photo" className={SECTION_TITLE}><span className={SECTION_NUMBER}>4<span className="hidden lg:inline">.</span></span> Foto kondisi awal <span className="text-red-500">*</span>{completedSections[3] && <Check className="ml-auto size-4 text-emerald-600 lg:hidden" />}</h2>
+                <h2 id="intake-photo" className={SECTION_TITLE}><span className={SECTION_NUMBER}>4</span> Foto kondisi awal <span className="text-red-500">*</span>{completedSections[3] && <Check className="ml-auto size-4 text-brand-600" />}</h2>
                 <p className="text-xs text-slate-500">Minimal satu foto. Ketuk kamera untuk mengambil foto HP.</p>
                 <PhotoManager refType={DRAFT_PHOTO_REF.refType} refId={DRAFT_PHOTO_REF.refId} label="Ambil foto" canDelete serviceUndo onBusyChange={setPhotoBusy} />
               </section>
             </fieldset>
             <div data-service-savebar className="fixed inset-x-0 bottom-[calc(3.25rem+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:bottom-0 lg:left-60">
-              <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 sm:gap-4 lg:px-4">
+              <div className="mx-auto flex max-w-[1320px] flex-wrap items-center gap-2 sm:gap-4 lg:px-4">
                 <p className="flex-1 text-xs text-slate-500" aria-live="polite">{undoBusy ? "Membatalkan perubahan…" : busy ? "Menyimpan nota…" : photoBusy ? "Menyiapkan foto…" : valid ? "Siap disimpan · draft tersimpan otomatis" : "Lengkapi nama, perangkat, keluhan, dan satu foto."}</p>
                 <Button type="submit" size="lg" className="w-full sm:w-auto sm:min-w-48" disabled={!valid || busy || photoBusy || undoBusy}>{undoBusy ? "Membatalkan…" : busy ? "Menyimpan…" : "Simpan Nota"}</Button>
               </div>

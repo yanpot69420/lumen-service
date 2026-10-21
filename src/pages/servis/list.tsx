@@ -61,15 +61,17 @@ export function ServisListPage() {
   const activeCount = tickets?.filter((t) => t.status !== "diambil" && t.status !== "batal").length ?? 0;
   const readyCount = tickets?.filter((t) => t.status === "selesai").length ?? 0;
   const checkingCount = tickets?.filter((t) => t.status === "masuk").length ?? 0;
+  const receivableCount = tickets?.filter((t) => (t.piutang ?? 0) > 0).length ?? 0;
 
   return (
     <>
       <PageHeader
         title="Servis"
+        subtitle="Pantau antrean, lanjutkan pengerjaan, dan selesaikan nota pelanggan."
         action={
           <Link
             to="/app/servis/baru"
-            className="inline-flex h-11 items-center gap-1.5 rounded-2xl bg-accent-500 px-4 text-sm font-semibold text-brand-950 hover:bg-accent-400 lg:h-8 lg:rounded-xl lg:px-3 lg:text-xs"
+            className="inline-flex h-11 items-center gap-1.5 rounded-2xl bg-accent-500 px-4 text-sm font-semibold text-brand-950 hover:bg-accent-400 lg:rounded-xl lg:px-4"
           >
             <Plus className="size-4" /> Nota Baru
           </Link>
@@ -97,7 +99,26 @@ export function ServisListPage() {
             ))}
           </div>
         </section>
-        <div className="relative">
+        <section className="hidden grid-cols-4 gap-4 lg:grid" aria-label="Ringkasan antrean servis desktop">
+          {([
+            { value: activeCount, label: "Servis aktif", hint: "Seluruh antrean berjalan", filter: "aktif" },
+            { value: checkingCount, label: "Perlu diperiksa", hint: "Perangkat baru diterima", filter: "masuk" },
+            { value: readyCount, label: "Siap diambil", hint: "Hubungi pelanggan", filter: "selesai" },
+            { value: receivableCount, label: "Nota piutang", hint: "Pembayaran belum lunas", filter: "piutang" },
+          ] as const).map((item) => (
+            <button key={item.filter} type="button" onClick={() => setFilter(item.filter)} aria-pressed={filter === item.filter} className={cn("rounded-[22px] border p-5 text-left transition-colors", filter === item.filter ? "border-brand-950 bg-brand-950 text-white" : "border-slate-200/80 bg-white text-brand-950 hover:border-brand-300")}>
+              <span className={cn("text-xs font-medium", filter === item.filter ? "text-white/65" : "text-slate-500")}>{item.label}</span>
+              <span className={cn("mt-3 block text-3xl font-bold tracking-tight tabular-nums", filter === item.filter && "text-accent-400")}>{item.value}</span>
+              <span className={cn("mt-2 block text-xs", filter === item.filter ? "text-white/50" : "text-slate-400")}>{item.hint}</span>
+            </button>
+          ))}
+        </section>
+        <section className="space-y-4 lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white lg:p-5" aria-label="Cari dan filter nota">
+        <div className="hidden items-center justify-between lg:flex">
+          <div><h2 className="text-base font-bold text-brand-950">Daftar nota servis</h2><p className="mt-1 text-xs text-slate-500">Pilih nota untuk melihat detail dan tindakan berikutnya.</p></div>
+          <span className="rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700">{filtered?.length ?? 0} nota</span>
+        </div>
+        <div className="relative lg:max-w-xl">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <Input
             className="h-12 rounded-2xl border-transparent pl-10 shadow-sm lg:h-11 lg:rounded-xl lg:border-slate-300 lg:pl-9 lg:shadow-none"
@@ -124,6 +145,7 @@ export function ServisListPage() {
             </button>
           ))}
         </div>
+        </section>
         <div className="flex items-center justify-between lg:hidden">
           <h2 className="text-sm font-bold text-brand-950">{filter === "aktif" ? "Antrean aktif" : filter === "semua" ? "Semua nota" : filterLabel(filter)}</h2>
           <span className="text-xs text-slate-500">{filtered?.length ?? 0} perangkat</span>
@@ -136,15 +158,16 @@ export function ServisListPage() {
             hint="Tekan “Nota Baru” saat pelanggan datang."
           />
         )}
-        <div className="space-y-3 lg:space-y-2">
+        <div className={cn("space-y-3 lg:space-y-0 lg:overflow-hidden lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white", !filtered?.length && "hidden")}>
+          {!!filtered?.length && <div className="hidden grid-cols-[minmax(0,1.7fr)_minmax(0,1.1fr)_100px_110px_16px] gap-4 border-b border-slate-200/70 bg-slate-50 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 lg:grid"><span>Perangkat / nota</span><span>Pelanggan</span><span>Status</span><span className="text-right">Total biaya</span><span /></div>}
           {filtered?.map((t) => (
             <Link
               key={t.id}
               to={`/app/servis/${t.id}`}
-              className="group block overflow-hidden rounded-[1.5rem] border border-white bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.025)] transition-colors hover:border-brand-300 lg:flex lg:items-center lg:gap-3 lg:rounded-2xl lg:border-slate-200 lg:shadow-none"
+              className="group block overflow-hidden rounded-[1.5rem] border border-white bg-white p-4 shadow-[0_2px_10px_rgba(0,0,0,0.025)] transition-colors hover:border-brand-300 lg:grid lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1.1fr)_100px_110px_16px] lg:items-center lg:gap-4 lg:rounded-none lg:border-0 lg:border-b lg:border-slate-100 lg:px-5 lg:py-4 lg:shadow-none lg:last:border-b-0 lg:hover:bg-brand-50/50"
             >
               <div className="flex items-start gap-3 lg:hidden">
-                <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#f4f5f0] text-brand-700"><Smartphone className="size-6" /></span>
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-brand-700"><Smartphone className="size-6" /></span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-base font-bold text-brand-950">{t.brand} {t.model}</p>
                   <p className="mt-0.5 truncate text-sm text-slate-500">{t.customerName}</p>
@@ -160,26 +183,19 @@ export function ServisListPage() {
                 <span className="text-[11px] text-slate-400">{fmtDate(t.createdAt)}</span>
                 <span className="inline-flex items-center gap-1.5 text-sm font-bold tabular-nums text-brand-950">{rp(ticketTotal(t))}<ArrowUpRight className="size-3.5 text-slate-400" /></span>
               </div>
-              <div className="hidden min-w-0 flex-1 lg:block">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-brand-600">
-                    {t.noNota}
-                  </span>
-                  <TicketStatusTag status={t.status} />
-                </div>
-                <p className="mt-1 truncate text-sm font-semibold">
-                  {t.brand} {t.model}
-                </p>
-                <p className="truncate text-xs text-slate-500">
-                  {t.customerName} · {t.keluhan}
-                </p>
+              <div className="hidden min-w-0 lg:block">
+                <p className="truncate text-sm font-semibold text-brand-950">{t.brand} {t.model}</p>
+                <p className="mt-1.5 truncate font-mono text-[10px] tracking-wide text-brand-700">{t.noNota}</p>
               </div>
+              <div className="hidden min-w-0 lg:block"><p className="truncate text-sm font-medium text-slate-700">{t.customerName}</p><p className="mt-1.5 text-xs text-slate-400">{fmtDate(t.createdAt)}</p></div>
+              <div className="hidden lg:block"><TicketStatusTag status={t.status} /></div>
               <div className="hidden text-right lg:block">
-                <p className="text-sm font-bold tabular-nums">
+                <p className="text-sm font-bold tabular-nums text-brand-950">
                   {rp(ticketTotal(t))}
                 </p>
-                <p className="text-xs text-slate-400">{fmtDate(t.createdAt)}</p>
+                {(t.piutang ?? 0) > 0 && <p className="mt-1 text-[11px] text-accent-700">Piutang {rp(t.piutang!)}</p>}
               </div>
+              <ChevronRight className="hidden size-4 text-slate-300 group-hover:text-brand-700 lg:block" />
             </Link>
           ))}
         </div>

@@ -25,6 +25,8 @@ Perbaikan kode diselesaikan mengikuti urutan laporan: perlindungan data, konsist
 
 ## Kelengkapan rilis
 
+- Pemeriksaan sebelum deployment pada 21 Oktober 2026 menambahkan 41 tes dan memperbaiki form/snapshot lama, sumber garansi serta dependensi Undo, IMEI stok ganda saat retur, jurnal refund Rp0, perlindungan jurnal retur, modal part servis batal, backup rusak, dan hasil pencarian publik yang terlambat. Total 145 tes lulus; rincian serta batas staging ada di [PREFLIGHT.md](PREFLIGHT.md). Migrasi `202610210001_preflight_integrity.sql` diperlukan bersama frontend terbaru.
+- Tema desktop diselaraskan dengan mobile dan landing page: monokrom dengan aksen oranye, permukaan putih, serta komponen form/kartu/modal yang konsisten. Metadata browser, banner pembaruan, dan ikon PWA memakai palet yang sama. Sidebar dikelompokkan, beranda memprioritaskan antrean dan pengingat, daftar memiliki kolom desktop, serta detail memakai dua kolom pada layar lebar. Pemeriksaan kode, build, dan 104 pengujian lulus untuk pembaruan tata letak; pratinjau browser belum dapat diperiksa karena akses browser ditolak oleh kebijakan lingkungan. Rincian ada di [THEME.md](THEME.md).
 - Tampilan mobile mempunyai susunan khusus untuk beranda, navigasi, menu, kas, dan kartu kerja servis/stok/pelanggan. Form memakai kontrol sentuh lebih besar, teks input 16 px, safe area, dan pemisahan tombol simpan/snackbar/dock. Desktop mulai 1024 px mempertahankan sidebar. Pintasan filter dan hak akses diperiksa lewat data contoh terpisah; rincian ada di [MOBILE.md](MOBILE.md).
 - Snackbar nota menampilkan status penyimpanan dan Undo selama 8 detik untuk draft/submit, foto, serta semua perubahan detail. Undo lokal atomik memulihkan stok/kas, mempertahankan audit, dan menolak data yang sudah berubah/dipakai atau kas yang ditutup. Antrean cloud ditahan selama tenggat dan diklaim atomik sebelum dikirim; tidak ada transisi balik keuangan yang dikirim ke server. Panduan ada di [SERVICE-UNDO.md](SERVICE-UNDO.md).
 - Menu Pelanggan memuat profil nama/WA, catatan, penanda langganan, pencarian, dan riwayat servis. Form nota memakai profil tersimpan dan menjaga salinan identitas pada nota lama. Backup versi 4 mencakup pelanggan; versi 1–3 tetap dibaca. Alur tambah profil → buat nota → riwayat, serta perlindungan draft antar pelanggan, diperiksa melalui browser dengan data di memori.
@@ -37,12 +39,12 @@ Perbaikan kode diselesaikan mengikuti urutan laporan: perlindungan data, konsist
 - Katalog awal 30 sparepart tersedia sebagai helper lokal untuk pengembangan dan seed SQL Supabase terpisah. Sumber JSON bersama, stok/harga nol, penambahan atomik, ID tetap, dan pencocokan nama mencegah pemuatan ulang menimpa data barang. Generator dan pemeriksaan CI menjaga kedua bentuk seed tetap sesuai. Halaman stok menyediakan pencarian nama/tipe dan modal filter kategori/kondisi stok; tombol pemuatan katalog tidak ditampilkan.
 - Restok menghitung ulang modal rata-rata; stok awal dengan modal dicatat sebagai pembelian. Perubahan harga dan pengaturan memiliki audit.
 - Detail yang tidak ditemukan memiliki pesan yang jelas. Error async tampil sebagai pemberitahuan. Dialog mengelola fokus, Escape, Tab, dan pengembalian fokus.
-- Tanggal bisnis mengikuti Asia/Makassar. Halaman dimuat bertahap; build lokal terakhir menghasilkan bundle utama sekitar 387 kB, tanpa peringatan chunk >500 kB.
+- Tanggal bisnis mengikuti Asia/Makassar. Halaman dimuat bertahap; build lokal terakhir menghasilkan bundle utama sekitar 395 kB, tanpa peringatan chunk >500 kB.
 - Pembaruan PWA meminta pengguna menyimpan formulir dan memilih muat ulang. CI mencakup pengujian, build, dan pemeriksaan tipe fungsi server.
 
 ## Verifikasi
 
-Pengujian Bun asli lulus: **104 kasus** di dua belas file, memakai dependensi dari `bun.lock`.
+Pengujian Bun asli lulus: **145 kasus** di 17 file dengan 688 pemeriksaan, memakai dependensi dari `bun.lock`.
 
 - Pengujian IndexedDB memeriksa rollback stok/kas/outbox, penjualan bersamaan, penggabungan part, retry permintaan, penutupan kas, koreksi, backup, foto, dan migrasi data lama.
 - Sebanyak 22 pengujian Undo mencakup pemulihan draft/foto, rollback stok/kas, tenggat, akun/peran, penolakan perubahan terbaru/dependensi baru, pemeriksaan ulang form sebelum rollback, klaim antrean cloud, rebasing revisi foto, audit, kegagalan atomik, dan invalidasi setelah restore. Perubahan nama, buang draft, submit, status, serta sparepart diuji lewat browser dengan data contoh di memori.

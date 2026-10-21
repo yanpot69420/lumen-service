@@ -113,7 +113,7 @@ export function UnitDetailPage() {
                   <Row label="Harga jual" strong>{rp(unit.soldPrice!)}</Row>
                   {money && (
                     <Row label="Margin" strong>
-                      <span className="text-emerald-600">
+                      <span className="text-brand-600">
                         +{rp((unit.soldPrice ?? 0) - unit.hargaBeli)}
                       </span>
                     </Row>
@@ -248,10 +248,10 @@ export function UnitDetailPage() {
             />
           </Field>
           {money && (
-            <div className="rounded-xl bg-emerald-50 p-4 text-sm">
+            <div className="rounded-xl bg-brand-50 p-4 text-sm">
               <Row label="Modal">{rp(unit.hargaBeli)}</Row>
               <Row label="Margin" strong>
-                <span className="text-emerald-600">
+                <span className="text-brand-600">
                   +{rp(Math.max(0, sale.soldPrice - unit.hargaBeli))}
                 </span>
               </Row>

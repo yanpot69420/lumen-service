@@ -27,7 +27,8 @@ export async function addCash(
     "id" | "at" | "dayKey" | "by" | "byName" | "locked" | "voided"
   >,
 ): Promise<string> {
-  amount(entry.amount, "Nominal", true);
+  const returnMarker = entry.type === "out" && entry.category === "retur_unit" && entry.refType === "unit" && !!entry.refId;
+  amount(entry.amount, "Nominal", !returnMarker);
   if (await db.dayCloses.get(dayKey())) throw new Error("Kas hari ini sudah ditutup");
   const id = uid();
   await db.cash.add({
@@ -64,8 +65,12 @@ export async function closeCash(user: User, counted: number, note: string, displ
     await logAudit(actor, "tutup-kas", "kas", key, `Sistem ${expected}, fisik ${counted}, selisih ${counted - expected}`);
   });
 }
-async function applyCorrection(entry: CashEntry, after: { amount: number; note: string; voided: 0 | 1; }) {
+function validateUnitCorrection(entry: CashEntry, after: { voided: 0 | 1 }) {
   if (entry.category === "jual_unit" && after.voided) throw new Error("Pembatalan penjualan unit harus melalui Retur Unit");
+  if (entry.category === "retur_unit" && after.voided) throw new Error("Jurnal retur unit tidak dapat dibatalkan karena unit sudah kembali ke stok. Koreksi nominal refund bila diperlukan.");
+}
+async function applyCorrection(entry: CashEntry, after: { amount: number; note: string; voided: 0 | 1; }) {
+  validateUnitCorrection(entry, after);
   const wasDp = entry.category === "servis" && entry.type === "in" && (entry.meta?.paymentKind ? entry.meta.paymentKind === "dp" : entry.note.startsWith("DP servis "));
   await db.cash.update(entry.id, { ...after, ...(wasDp ? { meta: { ...entry.meta, paymentKind: "dp" } } : {}) });
   if (entry.refType === "ticket" && entry.refId) {
@@ -83,11 +88,13 @@ async function applyCorrection(entry: CashEntry, after: { amount: number; note: 
     if (unit?.status === "terjual" && latest.at(-1)?.id === entry.id) await db.units.update(unit.id, { soldPrice: after.amount });
   }
 }
-export async function requestCorrection(user: User, id: string, after: { amount: number; note: string; voided: 0 | 1; }, reason: string) {
+export async function requestCorrection(user: User, id: string, after: { amount: number; note: string; voided: 0 | 1; }, reason: string, displayed?: Pick<CashEntry, "amount" | "note" | "voided">) {
   return operation(user, "correction", async (actor) => {
     amount(after.amount); if (!reason.trim()) throw new Error("Alasan wajib diisi");
     const entry = await db.cash.get(id); if (!entry) throw new Error("Transaksi tidak ditemukan");
+    if (displayed && (entry.amount !== displayed.amount || entry.note !== displayed.note || entry.voided !== displayed.voided)) throw new Error("Transaksi sudah berubah. Buka kembali koreksi dan periksa nilai terbaru.");
     if (actor.role === "kasir" && entry.by !== actor.id) throw new Error("Koreksi hanya untuk transaksi Anda sendiri");
+    validateUnitCorrection(entry, after);
     if (await db.corrections.where("status").equals("pending").and((c) => c.entityId === id).count()) throw new Error("Sudah ada koreksi yang menunggu");
     const approved = actor.role === "owner";
     await db.corrections.add({ id: uid(), at: Date.now(), entity: "cash", entityId: id, reason: reason.trim(), before: { amount: entry.amount, note: entry.note, voided: entry.voided }, after, requestedBy: actor.id, requestedByName: actor.name, status: approved ? "approved" : "pending", ...(approved ? { decidedBy: actor.id, decidedByName: actor.name, decidedAt: Date.now() } : {}) });

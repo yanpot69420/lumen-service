@@ -1,5 +1,6 @@
 import { hashPin, newRecoveryCode, newSalt } from "@/auth/pin";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/brand";
 import { Field, Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { cloudSetup, isCloud } from "@/db/cloud";
@@ -37,7 +38,7 @@ export function SetupPage() {
   if (recoveryCode) {
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-5 p-6 text-center">
-        <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-emerald-100 text-2xl">
+        <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-brand-100 text-2xl">
           🔑
         </div>
         <div>
@@ -144,9 +145,7 @@ export function SetupPage() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 p-6">
       <div className="text-center">
-        <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-2xl bg-brand-950 text-2xl font-black text-accent-500">
-          L
-        </div>
+        <BrandMark className="mx-auto mb-4 size-14 text-2xl" />
         <h1 className="text-xl font-bold">Selamat datang di Lumen</h1>
         <p className="mt-1 text-sm text-slate-500">
           Setup sekali di awal — buat akun Owner dan Head Operasional.

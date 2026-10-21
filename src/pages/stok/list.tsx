@@ -48,11 +48,12 @@ export function StokPage() {
     <>
       <PageHeader
         title="Stok"
+        subtitle="Kelola etalase unit, ketersediaan sparepart, dan kebutuhan restok."
         action={
           tab === "unit" && canSeeMoney(user.role) ? (
             <Link
               to="/app/stok/beli"
-              className="inline-flex h-11 items-center gap-1.5 rounded-2xl bg-accent-500 px-3 text-xs font-semibold text-brand-950 hover:bg-accent-400 lg:h-8 lg:rounded-xl"
+              className="inline-flex h-11 items-center gap-1.5 rounded-2xl bg-accent-500 px-3 text-xs font-semibold text-brand-950 hover:bg-accent-400 lg:rounded-xl lg:px-4 lg:text-sm"
             >
               <Plus className="size-4" /> Beli Unit
             </Link>
@@ -60,7 +61,7 @@ export function StokPage() {
         }
       />
       <PageBody>
-        <div className="grid grid-cols-2 gap-1 rounded-[22px] bg-[#e8eae3] p-1.5 text-sm font-semibold lg:gap-0 lg:rounded-xl lg:bg-slate-200/70 lg:p-1 lg:font-medium" role="group" aria-label="Jenis stok">
+        <div className="grid grid-cols-2 gap-1 rounded-[22px] bg-slate-200 p-1.5 text-sm font-semibold lg:w-fit lg:min-w-[430px] lg:rounded-2xl lg:p-1.5" role="group" aria-label="Jenis stok">
           {(
             [
               ["unit", "Unit HP"],
@@ -71,12 +72,12 @@ export function StokPage() {
               key={k}
               onClick={() => setTab(k)}
               className={cn(
-                "flex min-h-12 items-center justify-center gap-2 rounded-2xl px-2 py-2 transition-colors lg:min-h-0 lg:rounded-lg",
-                tab === k ? "bg-brand-950 text-white shadow-sm lg:bg-white lg:text-slate-900" : "text-slate-500",
+                "flex min-h-12 items-center justify-center gap-2 rounded-2xl px-2 py-2 transition-colors lg:min-h-11 lg:rounded-xl lg:px-5",
+                tab === k ? "bg-brand-950 text-white shadow-sm" : "text-slate-500 hover:text-brand-950",
               )}
               aria-pressed={tab === k}
             >
-              {k === "unit" ? <Smartphone className="size-4 lg:hidden" /> : <Package className="size-4 lg:hidden" />}
+              {k === "unit" ? <Smartphone className="size-4" /> : <Package className="size-4" />}
               <span className="lg:hidden">{k === "unit" ? "Unit HP" : "Sparepart"}</span><span className="hidden lg:inline">{label}</span>
             </button>
           ))}
@@ -111,7 +112,7 @@ function UnitTab() {
   const availableCount = units?.filter((unit) => unit.status === "stok").length ?? 0;
 
   return (
-    <div className="space-y-4 lg:space-y-3">
+    <div className="space-y-4 lg:space-y-5">
       <div className="overflow-hidden rounded-3xl bg-brand-950 p-5 text-white lg:hidden">
         <div className="flex items-start justify-between gap-3">
           <div><p className="text-xs font-medium text-white/60">ETALASE UNIT</p><p className="mt-2 text-3xl font-bold tabular-nums">{units ? availableCount : "—"}<span className="ml-2 text-sm font-medium text-white/70">HP tersedia</span></p></div>
@@ -119,21 +120,14 @@ function UnitTab() {
         </div>
         {money && <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/10 pt-4"><div><p className="text-xs text-white/60">Nilai modal stok</p><p className="mt-1 text-base font-semibold tabular-nums">{rp(nilaiStok)}</p></div><button onClick={() => setShowSold((v) => !v)} aria-pressed={showSold} className="min-h-11 rounded-2xl bg-white/10 px-3 text-xs font-medium">{showSold ? "Hanya tersedia" : "Lihat terjual"}</button></div>}
       </div>
-      {money && (
-        <div className="hidden items-center justify-between rounded-2xl bg-brand-950 p-4 text-white lg:flex">
-          <div>
-            <p className="text-xs text-slate-300">Nilai stok (modal parkir)</p>
-            <p className="text-lg font-bold tabular-nums">{rp(nilaiStok)}</p>
-          </div>
-          <button
-            onClick={() => setShowSold((v) => !v)}
-            className="rounded-full border border-white/20 px-3 py-1.5 text-xs"
-          >
-            {showSold ? "Sembunyikan terjual" : "Tampilkan terjual"}
-          </button>
-        </div>
-      )}
-      <div className="relative">
+      <section className="hidden grid-cols-3 gap-4 lg:grid" aria-label="Ringkasan stok unit desktop">
+        <div className="rounded-[22px] bg-brand-950 p-5 text-white"><p className="text-xs text-white/60">Unit tersedia</p><p className="mt-3 text-3xl font-bold tabular-nums text-accent-400">{units ? availableCount : "—"}<span className="ml-2 text-xs font-medium text-white/50">HP</span></p><p className="mt-2 text-xs text-white/45">Siap ditawarkan ke pelanggan</p></div>
+        <div className="rounded-[22px] border border-slate-200/80 bg-white p-5"><p className="text-xs text-slate-500">{money ? "Nilai modal stok" : "Total unit tercatat"}</p><p className="mt-3 text-2xl font-bold tabular-nums text-brand-950">{money ? rp(nilaiStok) : units?.length ?? "—"}</p><p className="mt-2 text-xs text-slate-400">{money ? "Modal pada unit yang tersedia" : "Termasuk riwayat unit terjual"}</p></div>
+        <div className="rounded-[22px] border border-slate-200/80 bg-white p-5"><p className="text-xs text-slate-500">Stok lebih dari 60 hari</p><p className="mt-3 text-3xl font-bold tabular-nums text-brand-950">{units?.filter((unit) => unit.status === "stok" && daysSince(unit.boughtAt) > 60).length ?? "—"}</p><p className="mt-2 text-xs text-slate-400">Prioritaskan penawaran unit ini</p></div>
+      </section>
+      <section className="space-y-4 lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white lg:p-5" aria-label="Cari unit stok">
+      <div className="hidden items-center justify-between gap-3 lg:flex"><div><h2 className="text-base font-bold text-brand-950">Etalase unit HP</h2><p className="mt-1 text-xs text-slate-500">{filtered?.length ?? 0} unit ditampilkan{showSold ? " · termasuk terjual" : " · stok tersedia"}</p></div>{money && <button type="button" onClick={() => setShowSold((v) => !v)} aria-pressed={showSold} className={cn("rounded-xl border px-4 py-2.5 text-xs font-semibold transition-colors", showSold ? "border-brand-950 bg-brand-950 text-white" : "border-slate-200 text-brand-700 hover:border-brand-300")}>{showSold ? "Hanya stok tersedia" : "Tampilkan terjual"}</button>}</div>
+      <div className="relative lg:max-w-xl">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
         <Input
           className="h-12 rounded-2xl border-transparent bg-white pl-10 shadow-sm lg:h-11 lg:rounded-xl lg:border-slate-300 lg:shadow-none"
@@ -143,6 +137,7 @@ function UnitTab() {
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
+      </section>
       {filtered?.length === 0 && (
         <EmptyState
           icon={<Smartphone />}
@@ -150,13 +145,15 @@ function UnitTab() {
           hint="Tekan “Beli Unit” saat menerima HP dari penjual."
         />
       )}
+      <div className={cn("space-y-4 lg:space-y-0 lg:overflow-hidden lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white", !filtered?.length && "hidden")}>
+      {!!filtered?.length && <div className="hidden grid-cols-[56px_minmax(0,1fr)_110px_150px_16px] gap-4 border-b border-slate-200/70 bg-slate-50 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 lg:grid"><span className="col-span-2">Perangkat / identitas</span><span>Status</span><span className="text-right">Nilai unit</span><span /></div>}
       {filtered?.map((u) => {
         const umur = daysSince(u.boughtAt);
         return (
           <Link
             key={u.id}
             to={`/app/stok/unit/${u.id}`}
-            className="grid grid-cols-[64px_minmax(0,1fr)] items-start gap-x-3 gap-y-4 rounded-3xl border border-white bg-white p-4 shadow-sm hover:border-brand-300 lg:flex lg:items-center lg:gap-3 lg:rounded-2xl lg:border-slate-200 lg:p-3 lg:shadow-none"
+            className="group grid grid-cols-[64px_minmax(0,1fr)] items-start gap-x-3 gap-y-4 rounded-3xl border border-white bg-white p-4 shadow-sm hover:border-brand-300 lg:grid-cols-[56px_minmax(0,1fr)_110px_150px_16px] lg:items-center lg:gap-4 lg:rounded-none lg:border-0 lg:border-b lg:border-slate-100 lg:px-5 lg:py-4 lg:shadow-none lg:last:border-b-0 lg:hover:bg-brand-50/50"
           >
             <FirstPhoto refType="unit" refId={u.id} className="size-16 shrink-0 rounded-2xl lg:size-14" />
             <div className="min-w-0 flex-1">
@@ -164,18 +161,19 @@ function UnitTab() {
                 <span className="hidden font-mono text-xs font-semibold text-brand-600 lg:inline">
                   {u.kode}
                 </span>
-                <UnitStatusTag status={u.status} />
+                <span className="lg:hidden"><UnitStatusTag status={u.status} /></span>
                 {u.status === "stok" && umur > 60 && (
-                  <Tag className="bg-red-100 text-red-700">{umur} hari</Tag>
+                  <Tag className="bg-red-100 text-red-700 lg:hidden">{umur} hari</Tag>
                 )}
               </div>
-              <p className="mt-1 break-words text-base font-semibold leading-snug lg:mt-0 lg:truncate lg:text-sm">
+              <p className="mt-1 break-words text-base font-semibold leading-snug lg:mt-1 lg:truncate lg:text-sm lg:text-brand-950">
                 {u.brand} {u.model} {u.varian}
               </p>
-              <p className="mt-1 truncate text-xs text-slate-400 lg:mt-0">IMEI {u.imei}</p>
+              <p className="mt-1 truncate text-xs text-slate-400">IMEI {u.imei}</p>
             </div>
+            <div className="hidden flex-col items-start gap-2 lg:flex"><UnitStatusTag status={u.status} />{u.status === "stok" && umur > 60 && <span className="text-[11px] font-medium text-red-500">{umur} hari di stok</span>}</div>
             <div className="col-span-2 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 lg:hidden"><span className="font-mono text-[11px] font-medium text-slate-400">{u.kode}</span><ChevronRight className="size-4 text-slate-300" /></div>
-            <div className="col-span-2 -mt-3 flex items-center justify-between gap-3 text-sm lg:mt-0 lg:block lg:border-0 lg:pt-0 lg:text-right">
+            <div className="col-span-2 -mt-3 flex items-center justify-between gap-3 text-sm lg:col-span-1 lg:mt-0 lg:block lg:border-0 lg:pt-0 lg:text-right">
               {u.status === "stok" ? (
                 <>
                   <p className="font-bold tabular-nums lg:order-none">
@@ -186,16 +184,18 @@ function UnitTab() {
                   )}
                 </>
               ) : money ? (
-                <p className="font-bold tabular-nums text-emerald-600">
+                <p className="font-bold tabular-nums text-brand-600">
                   +{rp((u.soldPrice ?? 0) - u.hargaBeli)}
                 </p>
               ) : (
                 <p className="font-bold tabular-nums">{rp(u.soldPrice ?? 0)}</p>
               )}
             </div>
+            <ChevronRight className="hidden size-4 text-slate-300 group-hover:text-brand-700 lg:block" />
           </Link>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -308,25 +308,32 @@ function PartTab() {
   }
 
   return (
-    <div className="space-y-4 lg:space-y-3">
+    <div className="space-y-4 lg:space-y-5">
       <div className="rounded-3xl bg-brand-950 p-5 text-white lg:hidden">
         <div className="flex items-start justify-between"><div><p className="text-xs font-medium text-white/60">RAK SPAREPART</p><p className="mt-2 text-3xl font-bold tabular-nums">{parts ? parts.length : "—"}<span className="ml-2 text-sm font-medium text-white/70">jenis barang</span></p></div><span className="rounded-2xl bg-white/10 p-3 text-accent-400"><Package className="size-6" /></span></div>
         <div className="mt-5 grid grid-cols-2 divide-x divide-white/10 border-t border-white/10 pt-4 text-sm"><div><p className="text-xs text-white/60">Tersedia</p><p className="mt-1 font-semibold">{parts?.filter((part) => part.stok > 0).length ?? "—"} jenis</p></div><div className="pl-5"><p className="text-xs text-white/60">Perlu restok</p><p className="mt-1 font-semibold text-accent-400">{parts?.filter((part) => part.stok <= part.minStok).length ?? "—"} jenis</p></div></div>
       </div>
-      <div className="flex gap-2">
-        {can(user.role, "sell") && <Button variant="accent" className="h-12 flex-1 rounded-2xl lg:h-10 lg:rounded-xl" onClick={() => {
+      <section className="hidden grid-cols-3 gap-4 lg:grid" aria-label="Ringkasan sparepart desktop">
+        <button type="button" onClick={() => setStock("semua")} className="rounded-[22px] bg-brand-950 p-5 text-left text-white"><p className="text-xs text-white/60">Katalog barang</p><p className="mt-3 text-3xl font-bold tabular-nums text-accent-400">{parts?.length ?? "—"}<span className="ml-2 text-xs font-medium text-white/50">jenis</span></p><p className="mt-2 text-xs text-white/45">Sparepart dan aksesoris</p></button>
+        <button type="button" onClick={() => setStock("tersedia")} className="rounded-[22px] border border-slate-200/80 bg-white p-5 text-left transition-colors hover:border-brand-300"><p className="text-xs text-slate-500">Barang tersedia</p><p className="mt-3 text-3xl font-bold tabular-nums text-brand-950">{parts?.filter((part) => part.stok > 0).length ?? "—"}</p><p className="mt-2 text-xs text-slate-400">Siap dipakai atau dijual</p></button>
+        <button type="button" onClick={() => setStock("perlu-restok")} className="rounded-[22px] border border-accent-200 bg-accent-50 p-5 text-left transition-colors hover:border-accent-400"><p className="text-xs text-brand-700">Perlu restok</p><p className="mt-3 text-3xl font-bold tabular-nums text-brand-950">{parts?.filter((part) => part.stok <= part.minStok).length ?? "—"}</p><p className="mt-2 text-xs text-brand-700/70">Stok menipis atau sudah habis</p></button>
+      </section>
+      <section className="space-y-4 lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white lg:p-5" aria-label="Cari dan kelola sparepart">
+      <div className="flex gap-2 lg:items-center">
+        <div className="mr-auto hidden lg:block"><h2 className="text-base font-bold text-brand-950">Katalog sparepart</h2><p className="mt-1 text-xs text-slate-500">Cari barang berdasarkan nama, tipe, atau merek.</p></div>
+        {can(user.role, "sell") && <Button variant="accent" className="h-12 flex-1 rounded-2xl lg:h-11 lg:flex-none lg:rounded-xl" onClick={() => {
           setSale({ partId: "", qty: 1, harga: 0, method: "tunai" });
           setSellOpen(true);
         }}>
           <ShoppingCart /> Jual Cepat
         </Button>}
         {money && (
-          <Button variant="outline" className="h-12 flex-1 rounded-2xl lg:h-10 lg:rounded-xl" onClick={openNew}>
+          <Button variant="outline" className="h-12 flex-1 rounded-2xl lg:h-11 lg:flex-none lg:rounded-xl" onClick={openNew}>
             <Plus /> Tambah Item
           </Button>
         )}
       </div>
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0" role="group" aria-label="Kategori merek HP">
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:gap-1.5 lg:px-0" role="group" aria-label="Kategori merek HP">
         {[{ value: "semua", label: "Semua Merek", count: parts?.length ?? 0 }, ...quickBrands.map((brand) => ({ value: brand, label: brand, count: brandCounts.get(brand) ?? 0 }))].map((brand) => (
           <button key={brand.value} type="button" aria-pressed={brandFilter === brand.value} onClick={() => setBrandFilter(brand.value)} className={cn("min-h-11 shrink-0 rounded-2xl border px-3 py-2 text-xs font-medium lg:min-h-0 lg:rounded-full", brandFilter === brand.value ? "border-brand-950 bg-brand-950 text-white" : "border-slate-200 bg-white text-slate-600")}>
             {brand.label} <span className="ml-1 opacity-60">{brand.count}</span>
@@ -359,6 +366,7 @@ function PartTab() {
           Filter: {[brandFilter !== "semua" ? brandFilter : "", category !== "semua" ? (category === "sparepart" ? "Sparepart" : "Aksesoris") : "", stock !== "semua" ? ({ tersedia: "Stok tersedia", menipis: "Stok menipis", habis: "Stok habis", "perlu-restok": "Perlu restok" } as const)[stock] : ""].filter(Boolean).join(" · ")}
         </p>
       )}
+      </section>
       {parts?.length === 0 && (
         <EmptyState
           icon={<Package />}
@@ -369,30 +377,35 @@ function PartTab() {
       {!!parts?.length && filtered?.length === 0 && (
         <EmptyState icon={<Search />} title="Tidak ada barang yang cocok" hint="Coba nama lain atau reset pencarian dan filter." />
       )}
+      <div className={cn("space-y-4 lg:space-y-0 lg:overflow-hidden lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white", !filtered?.length && "hidden")}>
+      {!!filtered?.length && <div className="hidden grid-cols-[minmax(0,1fr)_110px_100px_110px_16px] items-center gap-4 border-b border-slate-200/70 bg-slate-50 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 lg:grid"><span>Barang / kategori</span><span>Merek</span><span>Stok</span><span className="text-right">Harga jual</span><span /></div>}
       {filtered?.map((p) => (
         <PartRow
           key={p.id}
           onClick={money ? () => openEdit(p) : undefined}
           className={cn(
-            "grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-4 rounded-3xl border border-white bg-white p-4 text-left shadow-sm lg:flex lg:items-center lg:gap-3 lg:rounded-2xl lg:border-slate-200 lg:shadow-none",
-            money && "hover:border-brand-300",
+            "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-4 rounded-3xl border border-white bg-white p-4 text-left shadow-sm lg:grid-cols-[minmax(0,1fr)_110px_100px_110px_16px] lg:items-center lg:gap-4 lg:rounded-none lg:border-0 lg:border-b lg:border-slate-100 lg:px-5 lg:py-4 lg:shadow-none lg:last:border-b-0",
+            money && "hover:border-brand-300 lg:hover:bg-brand-50/50",
           )}
         >
           <div className="min-w-0 flex-1">
-            <p className="break-words text-base font-semibold leading-snug lg:truncate lg:text-sm">{p.nama}</p>
-            <p className="mt-2 text-xs text-slate-400 lg:mt-0"><span className="mr-1 inline-flex rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-600 lg:mr-0 lg:bg-transparent lg:p-0">{getPartBrand(p)}</span> <span className="capitalize">{p.kategori}</span></p>
+            <p className="break-words text-base font-semibold leading-snug lg:truncate lg:text-sm lg:text-brand-950">{p.nama}</p>
+            <p className="mt-2 text-xs text-slate-400 lg:mt-1.5"><span className="mr-1 inline-flex rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-600 lg:hidden">{getPartBrand(p)}</span> <span className="capitalize">{p.kategori}</span></p>
           </div>
+          <span className="hidden text-xs font-medium text-slate-600 lg:block">{getPartBrand(p)}</span>
           <Tag
             className={cn(
-              "min-w-12 flex-col rounded-2xl px-3 py-2 text-lg font-bold lg:min-w-0 lg:flex-row lg:rounded-full lg:px-2.5 lg:py-0.5 lg:text-xs lg:font-medium",
+              "min-w-12 flex-col rounded-2xl px-3 py-2 text-lg font-bold lg:min-w-0 lg:w-fit lg:flex-row lg:rounded-lg lg:px-3 lg:py-1.5 lg:text-xs lg:font-semibold",
               p.stok <= p.minStok && "bg-red-100 text-red-700",
             )}
           >
-            <span className="hidden lg:inline">stok&nbsp;</span>{p.stok}<span className="text-[9px] font-medium uppercase tracking-wide lg:hidden">{p.stok === 0 ? "habis" : p.stok <= p.minStok ? "menipis" : "stok"}</span>
+            {p.stok}<span className="hidden pl-1 font-normal opacity-70 lg:inline">pcs</span><span className="text-[9px] font-medium uppercase tracking-wide lg:hidden">{p.stok === 0 ? "habis" : p.stok <= p.minStok ? "menipis" : "stok"}</span>
           </Tag>
-          <div className="col-span-2 flex items-center justify-between border-t border-slate-100 pt-3 lg:contents"><p className="font-bold tabular-nums lg:w-24 lg:text-right lg:text-sm">{rp(p.hargaJual)}<span className="ml-1 text-xs font-normal text-slate-400 lg:hidden">/ pcs</span></p>{money && <span className="flex items-center gap-1 text-xs text-slate-400 lg:hidden">Kelola <ChevronRight className="size-4" /></span>}</div>
+          <div className="col-span-2 flex items-center justify-between border-t border-slate-100 pt-3 lg:contents"><p className="font-bold tabular-nums lg:text-right lg:text-sm lg:text-brand-950">{rp(p.hargaJual)}<span className="ml-1 text-xs font-normal text-slate-400 lg:hidden">/ pcs</span></p>{money && <span className="flex items-center gap-1 text-xs text-slate-400 lg:hidden">Kelola <ChevronRight className="size-4" /></span>}</div>
+          {money ? <ChevronRight className="hidden size-4 text-slate-300 group-hover:text-brand-700 lg:block" /> : <span className="hidden lg:block" />}
         </PartRow>
       ))}
+      </div>
 
       <Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter Stok">
         <div className="space-y-4">
@@ -646,6 +659,7 @@ function AdjustSheet({ part, onClose }: { part: Part | null; onClose: () => void
   const [alasan, setAlasan] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastId, setLastId] = useState<string | null>(null);
+  if (!part && lastId !== null) setLastId(null);
   if (part && part.id !== lastId) {
     setLastId(part.id);
     setStok(part.stok);
@@ -665,7 +679,7 @@ function AdjustSheet({ part, onClose }: { part: Part | null; onClose: () => void
         <p
           className={cn(
             "rounded-xl p-3 text-sm",
-            stok === part.stok ? "bg-slate-50" : "bg-amber-50 text-amber-800",
+            stok === part.stok ? "bg-slate-50" : "bg-accent-50 text-accent-800",
           )}
         >
           {part.stok} → <b>{stok}</b>{" "}
@@ -678,7 +692,7 @@ function AdjustSheet({ part, onClose }: { part: Part | null; onClose: () => void
           onClick={async () => {
             setBusy(true);
             try {
-              await adjustPartStock(user, part.id, stok, alasan.trim());
+              await adjustPartStock(user, part.id, stok, alasan.trim(), part.stok);
               toast("Penyesuaian tercatat di audit");
               onClose();
             } finally {

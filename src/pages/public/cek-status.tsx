@@ -2,57 +2,50 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Row } from "@/components/ui/misc";
 import { TicketStatusTag } from "@/components/ui/status-tag";
-import { findPublicStatus, type PublicStatus } from "@/db/public";
+import { findPublicStatus } from "@/db/public";
 import { isCloud } from "@/db/supabase";
 import { fmtDateTime, rp } from "@/lib/format";
+import { createPublicStatusLookup, emptyStatusLookup, type PublicStatusLookupState } from "@/lib/public-status-lookup";
 import { Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PublicFooter, PublicNav } from "./landing";
 
 export function CekStatusPage() {
   const [params] = useSearchParams();
   const [nota, setNota] = useState(params.get("nota") ?? "");
-  const [result, setResult] = useState<PublicStatus | null | "notfound">(null);
-  const [busy, setBusy] = useState(false);
   const [suffix, setSuffix] = useState("");
-  const [error, setError] = useState("");
-
-  async function cari(no: string) {
-    const clean = no.trim().toUpperCase();
-    if (!clean || suffix.length !== 4) return;
-    setBusy(true);
-    setError("");
-    try { setResult((await findPublicStatus(clean, suffix)) ?? "notfound"); }
-    catch (e) { setError(e instanceof Error ? e.message : "Pencarian gagal"); }
-    finally { setBusy(false); }
-  }
+  const [{ result, busy, error }, setLookupState] = useState<PublicStatusLookupState>(emptyStatusLookup);
+  const [lookup] = useState(() => createPublicStatusLookup(findPublicStatus, setLookupState));
+  useEffect(() => () => lookup.cancel(), [lookup]);
 
   return (
     <div className="flex min-h-dvh flex-col bg-slate-50">
       <PublicNav active="cek" />
       <main className="mx-auto w-full max-w-lg flex-1 space-y-4 px-4 py-10">
         {!isCloud && <p className="text-xs text-slate-500">Pratinjau lokal — pencarian memakai data perangkat ini.</p>}
-        {error && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{error}</p>}
+        {error && <p role="alert" className="rounded-xl bg-accent-50 p-4 text-sm text-accent-800">{error}</p>}
         <div className="text-center">
           <h1 className="text-xl font-bold">Cek Status Servis</h1>
           <p className="mt-1 text-sm text-slate-500">
             Masukkan nomor nota dan 4 digit terakhir nomor WA yang dicatat saat servis.
           </p>
         </div>
-        <Input aria-label="4 digit terakhir nomor WA pelanggan" placeholder="4 digit terakhir nomor WA" inputMode="numeric" maxLength={4} value={suffix} onChange={(e) => setSuffix(e.target.value.replace(/\D/g, ""))} />
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void lookup.search(nota, suffix); }}>
+        <Input aria-label="4 digit terakhir nomor WA pelanggan" placeholder="4 digit terakhir nomor WA" inputMode="numeric" maxLength={4} value={suffix} onChange={(e) => { lookup.clear(); setSuffix(e.target.value.replace(/\D/g, "")); }} />
         <div className="flex gap-2">
           <Input
-            placeholder="LS-2607-0001"
+            aria-label="Nomor nota servis"
+            placeholder="Nomor nota servis"
             value={nota}
-            onChange={(e) => setNota(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && cari(nota)}
+            onChange={(e) => { lookup.clear(); setNota(e.target.value); }}
             className="font-mono uppercase"
           />
-          <Button disabled={busy || !nota.trim() || suffix.length !== 4} onClick={() => cari(nota)}>
-            <Search /> Cek
+          <Button type="submit" disabled={busy || !nota.trim() || suffix.length !== 4}>
+            <Search /> {busy ? "Mencari…" : "Cek"}
           </Button>
         </div>
+        </form>
 
         {result === "notfound" && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">

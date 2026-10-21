@@ -21,12 +21,14 @@ async function matchingCustomers(name: string, normalized: string) {
   return db.customers.where("phoneNormalized").equals(normalized).filter((c) => customerNameKey(c.name) === customerNameKey(name)).toArray();
 }
 
-export async function saveCustomer(user: User, input: CustomerInput, id?: string): Promise<Customer> {
+export async function saveCustomer(user: User, input: CustomerInput, id?: string, expected?: Customer): Promise<Customer> {
   const identity = contact(input.name, input.phone);
   if (typeof input.isRegular !== "boolean" || typeof input.notes !== "string" || input.notes.length > 2000) throw new Error("Catatan pelanggan maksimal 2.000 karakter");
   return operation(user, "customers", async (actor) => {
     const current = id ? await db.customers.get(id) : undefined;
     if (id && !current) throw new Error("Pelanggan tidak ditemukan");
+    const snapshot = (customer: Customer) => JSON.stringify([customer.name, customer.phone, customer.notes, customer.isRegular]);
+    if (expected && (!current || current.id !== expected.id || snapshot(current) !== snapshot(expected))) throw new Error("Profil pelanggan sudah berubah. Tutup form dan buka kembali agar perubahan terbaru tetap aman.");
     if ((await matchingCustomers(identity.name, identity.phoneNormalized)).some((c) => c.id !== id)) throw new Error("Pelanggan dengan nama dan nomor WA ini sudah ada. Pilih profil yang sudah tersimpan.");
     const now = Date.now();
     const customer: Customer = {

@@ -146,6 +146,7 @@ export async function returUnit(
     const fresh = await db.units.get(unit.id);
     if (!fresh || fresh.status !== "terjual") throw new Error("Unit sudah diretur atau tidak ditemukan");
     unit = fresh;
+    if (await db.units.where("imei").equals(unit.imei).and((u) => u.id !== unit.id && u.status === "stok").count()) throw new Error("Unit ber-IMEI sama masih ada di stok. Periksa pencatatan unit sebelum melakukan retur.");
     if (ret.refund > (unit.soldPrice ?? 0)) throw new Error("Refund melebihi harga jual");
     const detail = `harga jual ${unit.soldPrice}, refund ${ret.refund}, pembeli ${unit.buyerName || "-"}`;
     await db.units.update(unit.id, {
@@ -155,18 +156,18 @@ export async function returUnit(
       buyerName: undefined,
       buyerPhone: undefined,
     });
-    if (ret.refund > 0) {
-      await addCash(user, {
-        type: "out",
-        category: "retur_unit",
-        amount: ret.refund,
-        method: ret.method,
-        note: `Retur ${unit.kode}: ${unit.brand} ${unit.model} — ${ret.alasan}`,
-        refType: "unit",
-        refId: unit.id,
-        meta: { modal: unit.hargaBeli },
-      });
-    }
+    // Even a fully deducted refund must reverse the cost of the unit now
+    // returned to stock, so a later resale does not charge that cost twice.
+    await addCash(user, {
+      type: "out",
+      category: "retur_unit",
+      amount: ret.refund,
+      method: ret.method,
+      note: `Retur ${unit.kode}: ${unit.brand} ${unit.model} — ${ret.alasan}`,
+      refType: "unit",
+      refId: unit.id,
+      meta: { modal: unit.hargaBeli },
+    });
     await logAudit(
       user,
       "retur",

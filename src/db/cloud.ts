@@ -36,7 +36,9 @@ async function adoptSession(tokenHash: string): Promise<boolean> {
 }
 
 export async function cloudSignOut(): Promise<void> {
-  try { if (navigator.onLine) await supabase?.auth.signOut({ scope: "local" }); }
+  // The SDK also clears its refresh lifecycle and broadcasts SIGNED_OUT when
+  // the server cannot be reached. Removing storage alone skips that cleanup.
+  try { await supabase?.auth.signOut({ scope: "local" }); }
   finally { localStorage.removeItem("lumen.cloud.session"); }
 }
 
@@ -93,12 +95,27 @@ export async function cloudRecover(username: string, code: string, newPin: strin
 export async function manageCloudAccount(action: string, payload: object = {}) {
   const res = await invokeAuth(action, payload);
   if (!res?.ok) throw new Error(res?.error ?? "Perubahan akun gagal");
+  if (action === "reset-pin" || action === "deactivate-user") {
+    const userId = (payload as { userId?: unknown }).userId;
+    if (typeof userId === "string") await forgetOfflineLogin(userId);
+  }
   if (res.tokenHash && !await adoptSession(res.tokenHash)) throw new Error("PIN berubah. Silakan login ulang.");
   await pullCore();
   return res;
 }
 const OFFLINE_KEY = "offline.login";
 interface OfflineCredential { userId: string; username: string; pinHash: string; salt: string; expires: number; }
+async function readOfflineLogin(): Promise<OfflineCredential | null> {
+  const raw = await db.settings.get(OFFLINE_KEY);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw.value) as OfflineCredential | null;
+    if (!value || typeof value.userId !== "string" || !value.userId || typeof value.username !== "string" ||
+      typeof value.pinHash !== "string" || !value.pinHash || typeof value.salt !== "string" || !value.salt ||
+      !Number.isSafeInteger(value.expires)) return null;
+    return value;
+  } catch { return null; }
+}
 async function rememberOfflineLogin(userId: string, pin: string) {
   const user = await db.users.get(userId); if (!user) throw new Error("Profil staf belum tersedia");
   const salt = newSalt();
@@ -106,19 +123,19 @@ async function rememberOfflineLogin(userId: string, pin: string) {
   await db.settings.put({ key: OFFLINE_KEY, value: JSON.stringify(record) });
 }
 export async function offlineLogin(username: string, pin: string) {
-  const raw = await db.settings.get(OFFLINE_KEY);
-  if (!raw) return null;
-  const record = JSON.parse(raw.value) as OfflineCredential;
-  if (record.username !== username.trim().toLowerCase() || record.expires < Date.now()) return null;
+  const record = await readOfflineLogin();
+  if (!record || record.username !== username.trim().toLowerCase() || record.expires < Date.now()) return null;
   const user = await db.users.get(record.userId);
-  if (!user?.active || await hashPin(pin, record.salt) !== record.pinHash) return null;
+  if (!user?.active || user.username !== record.username || await hashPin(pin, record.salt) !== record.pinHash) return null;
   return user.id;
 }
 export async function offlineSessionValid(userId: string) {
-  try {
-    const raw = await db.settings.get(OFFLINE_KEY);
-    const value = raw ? JSON.parse(raw.value) as OfflineCredential : null;
-    return !!value && value.userId === userId && value.expires >= Date.now();
-  } catch { return false; }
+  const value = await readOfflineLogin();
+  if (!value || value.userId !== userId || value.expires < Date.now()) return false;
+  const user = await db.users.get(userId);
+  return !!user?.active && user.username === value.username;
 }
-export async function forgetOfflineLogin() { await db.settings.delete(OFFLINE_KEY); }
+export async function forgetOfflineLogin(userId?: string) {
+  if (userId !== undefined && (await readOfflineLogin())?.userId !== userId) return;
+  await db.settings.delete(OFFLINE_KEY);
+}
