@@ -1,11 +1,18 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
+import { publicCloudEnv } from "./scripts/public-cloud-env";
 
 // Port 3000: rentang 5041-5440 & 5549-5748 diblokir Windows di mesin dev ini.
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const cloud = publicCloudEnv(loadEnv(mode, process.cwd(), ["VITE_", "NEXT_PUBLIC_", "SUPABASE_"]));
+  return {
+  define: {
+    "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(cloud.url),
+    "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(cloud.key),
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -44,4 +51,5 @@ export default defineConfig({
   },
   server: { port: 3000, strictPort: true },
   preview: { port: 3001, strictPort: true },
+  };
 });

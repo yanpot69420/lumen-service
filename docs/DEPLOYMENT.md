@@ -16,6 +16,12 @@ bun run check:functions
 
 Dengan npm, `npm install` dan `npm run dev` juga dapat menjalankan aplikasi. Pengujian repo menggunakan Bun. Port pengembangan tetap 3000; preview produksi 3001. Direktori `dist/` adalah hasil build untuk hosting statis dengan rewrite SPA ke `/index.html`.
 
+## Vercel
+
+`vercel.json` menetapkan Vite, build `npm run build`, keluaran `dist`, dan rewrite rute SPA. Integrasi Vercel–Supabase dapat menyediakan `SUPABASE_URL`/`SUPABASE_ANON_KEY` atau nama `NEXT_PUBLIC_*`; konfigurasi build memetakannya secara eksplisit ke dua nilai publik Vite. Variabel `VITE_SUPABASE_*` tetap memiliki prioritas. Publishable key juga didukung. URL dan key harus tersedia bersama agar deployment tidak diam-diam berpindah ke mode lokal.
+
+Hanya URL dan anon/publishable key yang dimasukkan ke frontend. Service-role key, JWT secret, dan kredensial PostgreSQL tidak dipetakan; build menolak secret key yang salah dipasang sebagai key publik.
+
 Pengujian tidak memakai database toko: IndexedDB diuji dengan fake-indexeddb dan PostgreSQL dengan PGlite di memori. CI memasang dependensi sesuai `bun.lock`, menjalankan test, build, dan pemeriksaan TypeScript fungsi server.
 
 ## Supabase baru
