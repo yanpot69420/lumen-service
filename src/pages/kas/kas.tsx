@@ -1,5 +1,6 @@
 import { canSeeMoney } from "@/auth/roles";
 import { useUser } from "@/auth/session";
+import { CashDescription } from "@/components/cash-description";
 import { PageBody, PageHeader } from "@/components/layout/app-shell";
 import { MethodPicker, MethodTag } from "@/components/method-picker";
 import { PurchaseCorrection } from "@/components/purchase-correction";
@@ -30,6 +31,8 @@ export function KasPage() {
     [day],
   );
   const close = useLiveQuery(() => db.dayCloses.get(day), [day]);
+  const parts = useLiveQuery(() => db.parts.toArray(), []);
+  const partsById = new Map(parts?.map((part) => [part.id, part]));
   const pendingCorrections = useLiveQuery(() => db.corrections.where("status").equals("pending").toArray(), []);
   const pendingIds = new Set(pendingCorrections?.map((row) => row.entityId));
   // Dexie melacak tabel yang dibaca di dalam query — otomatis segar saat
@@ -148,9 +151,7 @@ export function KasPage() {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className={cn("line-clamp-2 text-sm font-semibold leading-relaxed", e.voided === 1 && "line-through")}>
-                  {e.note || CASH_CATEGORY_LABEL[e.category]}
-                </p>
+                <CashDescription entry={e} part={e.refType === "part" ? partsById.get(e.refId ?? "") : undefined} />
                 <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] leading-relaxed text-slate-400 lg:text-xs">
                   {fmtTime(e.at)} · {CASH_CATEGORY_LABEL[e.category]} · {e.byName}
                   <span className="lg:hidden"><MethodTag method={methodOf(e)} /></span>
@@ -373,6 +374,7 @@ function KoreksiSheet({
   const [reason, setReason] = useState("");
   const [voidIt, setVoidIt] = useState(false);
   const [busy, setBusy] = useState(false);
+  const currentPart = useLiveQuery(() => entry?.refType === "part" && entry.refId ? db.parts.get(entry.refId) : undefined, [entry?.refType, entry?.refId]);
 
   // Reset form tiap ganti entry
   const [lastId, setLastId] = useState<string | null>(null);
@@ -392,7 +394,7 @@ function KoreksiSheet({
     <Sheet open={!!entry} onClose={onClose} title="Ajukan Koreksi">
       <div className="space-y-4">
         <div className="rounded-xl bg-slate-50 p-4 text-sm">
-          <Row label="Transaksi">{entry.note || CASH_CATEGORY_LABEL[entry.category]}</Row>
+          <Row label="Transaksi"><CashDescription entry={entry} part={currentPart} /></Row>
           <Row label="Nominal sekarang" strong>{rp(entry.amount)}</Row>
         </div>
         <label className="flex items-center gap-2 text-sm">

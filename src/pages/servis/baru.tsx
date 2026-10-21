@@ -67,7 +67,7 @@ export function ServisBaruPage() {
   const intakeSession = useRef(Symbol("service-intake"));
   const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const draftQueue = useRef<Promise<void>>(Promise.resolve());
-  const draftLabel = useRef("Draft nota diperbarui");
+  const draftSaveFailed = useRef(false);
   const flushRef = useRef<() => Promise<void>>(async () => {});
 
   const history = useLiveQuery(() => db.tickets.orderBy("createdAt").reverse().toArray(), []);
@@ -156,7 +156,7 @@ export function ServisBaruPage() {
       if (hasDraft && !sameCustomer) {
         setPendingCustomer(customer);
       } else {
-        editDraft({ ...draft.current, f: { ...draft.current.f, customerId: customer.id, customerName: customer.name, phone: customer.phone } }, "Pelanggan dipilih");
+        editDraft({ ...draft.current, f: { ...draft.current.f, customerId: customer.id, customerName: customer.name, phone: customer.phone } });
         void flushDraft().catch(() => {});
         autoName.current = customer.name;
         setSearch(null);
@@ -178,11 +178,10 @@ export function ServisBaruPage() {
     setComplaints(next.complaints);
   }
 
-  function editDraft(next: Draft, message: string) {
+  function editDraft(next: Draft) {
     if (undoing.current) return;
     if (draftValue(next) === draftValue(draft.current)) return;
     applyDraft(next);
-    draftLabel.current = message;
     if (draftTimer.current) clearTimeout(draftTimer.current);
     draftTimer.current = setTimeout(() => { void flushDraft().catch(() => {}); }, 600);
   }
@@ -203,23 +202,17 @@ export function ServisBaruPage() {
     if (draftTimer.current) clearTimeout(draftTimer.current);
     const next = copyDraft(draft.current);
     const nextRevision = revision.current;
-    const expectedGeneration = generation.current;
-    const message = draftLabel.current;
     const task = draftQueue.current.then(async () => {
       if (draftValue(next) === draftValue(persisted.current.draft)) return;
-      const before = { draft: copyDraft(persisted.current.draft), revision: persisted.current.revision };
-      await run(() => setSetting(DRAFT_KEY, draftValue(next)), {
-        pending: "Menyimpan draft…", success: message,
-        onUndoBusy,
-        beforeUndo: () => assertDraftUnchanged(expectedGeneration, nextRevision),
-        onUndo: () => {
-          if (activeIntakeSession !== intakeSession.current) return;
-          persisted.current = before;
-          applyDraft(before.draft, before.revision);
-          autoName.current = before.draft.f.customerId ? before.draft.f.customerName : "";
-          if (mounted.current) setSearch(null);
-        },
-      });
+      // Autosave is silent; Undo belongs to explicit discard and submit actions.
+      try {
+        await setSetting(DRAFT_KEY, draftValue(next));
+        draftSaveFailed.current = false;
+      } catch (error) {
+        if (!draftSaveFailed.current && mounted.current) toast("Draft belum tersimpan. Coba simpan kembali sebelum meninggalkan halaman.", "error");
+        draftSaveFailed.current = true;
+        throw error;
+      }
       persisted.current = { draft: next, revision: nextRevision };
     });
     draftQueue.current = task.catch(() => {});
@@ -229,7 +222,7 @@ export function ServisBaruPage() {
 
   function chooseCustomer(customer: CustomerChoice) {
     if (undoing.current) return;
-    editDraft({ ...draft.current, f: { ...draft.current.f, customerId: customer.id ?? "", customerName: customer.customerName, phone: customer.phone } }, "Pelanggan dipilih");
+    editDraft({ ...draft.current, f: { ...draft.current.f, customerId: customer.id ?? "", customerName: customer.customerName, phone: customer.phone } });
     void flushDraft().catch(() => {});
     autoName.current = customer.customerName;
     setSearch(null);
@@ -240,7 +233,7 @@ export function ServisBaruPage() {
     const match = customerForPhone(customers, phone);
     const current = draft.current.f;
     const name = !current.customerName.trim() || current.customerName === autoName.current ? (match?.customerName ?? "") : current.customerName;
-    editDraft({ ...draft.current, f: { ...current, phone, customerName: name, customerId: match && name === match.customerName ? match.id ?? "" : "" } }, "Nomor WhatsApp diperbarui di draft");
+    editDraft({ ...draft.current, f: { ...current, phone, customerName: name, customerId: match && name === match.customerName ? match.id ?? "" : "" } });
     autoName.current = match?.customerName ?? "";
     setSearch("phone");
   }
@@ -421,7 +414,7 @@ export function ServisBaruPage() {
                 </div>
                 <div>
                   <Field label="Nama pelanggan" required>
-                    <Input required autoComplete="off" placeholder="Nama pelanggan" value={f.customerName} onFocus={() => setSearch("customerName")} onChange={(e) => { autoName.current = ""; editDraft({ ...draft.current, f: { ...draft.current.f, customerId: "", customerName: e.target.value } }, "Nama pelanggan diperbarui di draft"); setSearch("customerName"); }} onBlur={() => void flushDraft().catch(() => {})} onKeyDown={(e) => { if (e.key === "Escape") setSearch(null); }} />
+                    <Input required autoComplete="off" placeholder="Nama pelanggan" value={f.customerName} onFocus={() => setSearch("customerName")} onChange={(e) => { autoName.current = ""; editDraft({ ...draft.current, f: { ...draft.current.f, customerId: "", customerName: e.target.value } }); setSearch("customerName"); }} onBlur={() => void flushDraft().catch(() => {})} onKeyDown={(e) => { if (e.key === "Escape") setSearch(null); }} />
                   </Field>
                   {customerSuggestions("customerName")}
                 </div>
@@ -430,14 +423,14 @@ export function ServisBaruPage() {
               <section className={SECTION} aria-labelledby="intake-device" onFocus={() => setSearch(null)}>
                 <h2 id="intake-device" className={SECTION_TITLE}><span className={SECTION_NUMBER}>2</span> Perangkat & kelengkapan{completedSections[1] && <Check className="ml-auto size-4 text-brand-600" />}</h2>
                 <Field label="Merek / tipe HP" required hint="Pilih dari riwayat atau ketik perangkat baru.">
-                  <Input required list="intake-devices" autoComplete="off" placeholder="Contoh: Samsung A54" value={f.device} onChange={(e) => editDraft({ ...draft.current, f: { ...draft.current.f, device: e.target.value } }, "Perangkat diperbarui di draft")} onBlur={() => void flushDraft().catch(() => {})} />
+                  <Input required list="intake-devices" autoComplete="off" placeholder="Contoh: Samsung A54" value={f.device} onChange={(e) => editDraft({ ...draft.current, f: { ...draft.current.f, device: e.target.value } })} onBlur={() => void flushDraft().catch(() => {})} />
                   <datalist id="intake-devices">{deviceOptions.map((name) => <option key={name} value={name} />)}</datalist>
                 </Field>
                 <div>
                   <p className="mb-2 text-xs font-medium text-slate-600">Kelengkapan yang dititipkan</p>
                   <div className="flex flex-wrap gap-1.5" role="group" aria-label="Kelengkapan yang dititipkan">
                     {KELENGKAPAN.map((k) => (
-                      <button key={k} type="button" aria-pressed={kelengkapan.includes(k)} onClick={() => { const xs = draft.current.kelengkapan; editDraft({ ...draft.current, kelengkapan: xs.includes(k) ? xs.filter((x) => x !== k) : [...xs, k] }, "Kelengkapan diperbarui di draft"); void flushDraft().catch(() => {}); }} className={cn("min-h-11 rounded-2xl border px-3 py-2 text-xs font-medium lg:min-h-0 lg:rounded-full", kelengkapan.includes(k) ? "border-brand-950 bg-brand-950 text-white" : "border-slate-200 text-slate-600")}>{k}</button>
+                      <button key={k} type="button" aria-pressed={kelengkapan.includes(k)} onClick={() => { const xs = draft.current.kelengkapan; editDraft({ ...draft.current, kelengkapan: xs.includes(k) ? xs.filter((x) => x !== k) : [...xs, k] }); void flushDraft().catch(() => {}); }} className={cn("min-h-11 rounded-2xl border px-3 py-2 text-xs font-medium lg:min-h-0 lg:rounded-full", kelengkapan.includes(k) ? "border-brand-950 bg-brand-950 text-white" : "border-slate-200 text-slate-600")}>{k}</button>
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-slate-400">{kelengkapan.length ? kelengkapan.join(", ") : "Tanpa kelengkapan tambahan"}</p>
@@ -447,17 +440,17 @@ export function ServisBaruPage() {
                 <h2 id="intake-complaint" className={SECTION_TITLE}><span className={SECTION_NUMBER}>3</span> Keluhan <span className="text-red-500">*</span>{completedSections[2] && <Check className="ml-auto size-4 text-brand-600" />}</h2>
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Keluhan umum">
                   {COMPLAINTS.map((c) => (
-                    <button key={c} type="button" aria-pressed={complaints.includes(c)} onClick={() => { const xs = draft.current.complaints; editDraft({ ...draft.current, complaints: xs.includes(c) ? xs.filter((x) => x !== c) : [...xs, c] }, "Keluhan diperbarui di draft"); void flushDraft().catch(() => {}); }} className={cn("min-h-11 rounded-2xl border px-3 py-2 text-xs font-medium lg:min-h-0 lg:rounded-full", complaints.includes(c) ? "border-brand-950 bg-brand-950 text-white" : "border-slate-200 text-slate-600")}>{c}</button>
+                    <button key={c} type="button" aria-pressed={complaints.includes(c)} onClick={() => { const xs = draft.current.complaints; editDraft({ ...draft.current, complaints: xs.includes(c) ? xs.filter((x) => x !== c) : [...xs, c] }); void flushDraft().catch(() => {}); }} className={cn("min-h-11 rounded-2xl border px-3 py-2 text-xs font-medium lg:min-h-0 lg:rounded-full", complaints.includes(c) ? "border-brand-950 bg-brand-950 text-white" : "border-slate-200 text-slate-600")}>{c}</button>
                   ))}
                 </div>
                 <Field label="Keluhan lain / catatan" hint="Boleh dikosongkan jika sudah memilih keluhan di atas.">
-                  <Textarea rows={2} className="min-h-16" placeholder="Contoh: layar bergaris setelah jatuh" value={f.keluhan} onChange={(e) => editDraft({ ...draft.current, f: { ...draft.current.f, keluhan: e.target.value } }, "Catatan diperbarui di draft")} onBlur={() => void flushDraft().catch(() => {})} />
+                  <Textarea rows={2} className="min-h-16" placeholder="Contoh: layar bergaris setelah jatuh" value={f.keluhan} onChange={(e) => editDraft({ ...draft.current, f: { ...draft.current.f, keluhan: e.target.value } })} onBlur={() => void flushDraft().catch(() => {})} />
                 </Field>
               </section>
               <section className={SECTION} aria-labelledby="intake-photo" onFocus={() => setSearch(null)}>
                 <h2 id="intake-photo" className={SECTION_TITLE}><span className={SECTION_NUMBER}>4</span> Foto kondisi awal <span className="text-red-500">*</span>{completedSections[3] && <Check className="ml-auto size-4 text-brand-600" />}</h2>
                 <p className="text-xs text-slate-500">Minimal satu foto. Ketuk kamera untuk mengambil foto HP.</p>
-                <PhotoManager refType={DRAFT_PHOTO_REF.refType} refId={DRAFT_PHOTO_REF.refId} label="Ambil foto" canDelete serviceUndo onBusyChange={setPhotoBusy} />
+                <PhotoManager refType={DRAFT_PHOTO_REF.refType} refId={DRAFT_PHOTO_REF.refId} label="Ambil foto" canDelete onBusyChange={setPhotoBusy} />
               </section>
             </fieldset>
             <div data-service-savebar className="fixed inset-x-0 bottom-[calc(3.25rem+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:bottom-0 lg:left-60">

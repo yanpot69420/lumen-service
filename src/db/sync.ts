@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { db, markRemoteWrite, type OutboxEntry } from "./db";
 import { isCloud, supabase } from "./supabase";
 import { M } from "./sync-mappers";
+import { repairRoundedPurchaseBatch } from "./sync-purchase-repair";
 
 export type SyncState = "off" | "idle" | "syncing" | "error" | "offline";
 interface Status { state: SyncState; pending: number; lastSync: number; error?: string; }
@@ -71,13 +72,14 @@ export async function pullCore() { for (const name of ["users", "settings"]) awa
 /** Claim before copying work out of IndexedDB. This also serializes with Undo
  * in browsers without cross-tab Web Locks; a stale copy can never be sent. */
 export async function claimSyncBatch(): Promise<{ batch: OutboxEntry[]; retryAt?: number; }> {
-  return db.transaction("rw", db.outbox, async () => {
+  return db.transaction("rw", [db.outbox, db.parts], async () => {
     const first = await db.outbox.orderBy("seq").first();
     if (!first) return { batch: [] };
     if (!first.batchId) throw new Error("Ada antrean dari versi lama. Unduh backup sebelum migrasi antrean; data lokal tetap disimpan.");
     const batch = await db.outbox.where("batchId").equals(first.batchId).sortBy("seq");
     const notBefore = Math.max(...batch.map((entry) => entry.notBefore ?? 0));
     if (notBefore > Date.now()) return { batch: [], retryAt: notBefore };
+    await repairRoundedPurchaseBatch(batch);
     for (const entry of batch) await db.outbox.update(entry.seq!, { inFlight: true });
     return { batch };
   });
@@ -105,13 +107,36 @@ async function pushBatch() {
   }
   const { data, error } = await supabase.rpc("apply_changes", { p_batch_id: first.batchId, p_changes: changes });
   if (error) throw cloudError(`Perubahan belum terkirim: ${error.message}`);
-  if (!Array.isArray(data)) throw new Error("Server tidak mengakui transaksi; antrean tetap disimpan");
+  await acknowledgeSyncBatch(batch, data);
+  return true;
+}
+
+/** Only discard durable changes after every sent row has an exact receipt.
+ * Empty/partial responses and duplicate acknowledgments must never lose work. */
+export async function acknowledgeSyncBatch(batch: OutboxEntry[], data: unknown): Promise<void> {
+  const expected = new Map(coalesceChanges(batch).map((entry) => [`${M[entry.table]?.remote}:${entry.key}`, entry]));
+  const invalid = () => new Error("Konfirmasi server tidak lengkap atau tidak sesuai; antrean tetap disimpan untuk dicoba kembali");
+  if (!batch.length || !Array.isArray(data) || data.length !== expected.size) throw invalid();
+  const seen = new Set<string>();
+  const receipts: { table: string; key: string; revision: number; }[] = [];
+  for (const ack of data) {
+    if (!ack || typeof ack !== "object" || typeof ack.table !== "string" || typeof ack.key !== "string") throw invalid();
+    const identity = `${ack.table}:${ack.key}`;
+    const entry = expected.get(identity);
+    if (!entry || seen.has(identity) || !Number.isSafeInteger(ack.revision) || ack.revision !== Number(entry.before?._version ?? 0) + 1) throw invalid();
+    seen.add(identity);
+    receipts.push({ table: entry.table, key: ack.key, revision: ack.revision });
+  }
   await db.transaction("rw", [db.outbox, ...ORDER.map((n) => db.table(n))], async () => {
     markRemoteWrite();
+    const queued = await db.outbox.bulkGet(batch.map((entry) => entry.seq!));
+    // Another tab can finish the same idempotent RPC first. Do not apply its
+    // old receipt a second time and downgrade revisions of later edits.
+    if (queued.every((entry) => !entry)) return;
+    if (queued.some((entry, index) => !entry || entry.batchId !== batch[index].batchId || entry.table !== batch[index].table || entry.key !== batch[index].key)) throw invalid();
     await db.outbox.bulkDelete(batch.map((e) => e.seq!));
-    for (const ack of data) {
-      const table = ORDER.find((n) => M[n].remote === ack.table);
-      if (!table) continue;
+    for (const ack of receipts) {
+      const table = ack.table;
       const remaining = await db.outbox.where("table").equals(table).filter((e) => e.key === ack.key).toArray();
       for (const entry of remaining) {
         await db.outbox.update(entry.seq!, { before: entry.before ? { ...entry.before, _version: ack.revision } : entry.before });
@@ -119,7 +144,6 @@ async function pushBatch() {
       await db.table(table).update(ack.key, { _version: ack.revision });
     }
   });
-  return true;
 }
 
 /** Older releases stored photos only on the device. Queue them without

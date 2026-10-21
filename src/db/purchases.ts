@@ -68,7 +68,10 @@ export async function correctPurchase(user: User, displayed: PurchaseContext, in
     // remains, and their original request is retained in the correction journal.
     const pending = await db.corrections.where("status").equals("pending").and((row) => row.entityId === context.entry.id).toArray();
     for (const row of pending) await db.corrections.update(row.id, { status: "rejected", decidedBy: actor.id, decidedByName: actor.name, decidedAt: Date.now() });
-    await db.parts.update(context.part.id, { stok: preview.stock, hargaModal: preview.unitCost });
+    // Dexie.update skips identical values. Rounded cost can stay unchanged even
+    // when the invoice total changes; the server still needs this row for CAS
+    // and atomic validation of the complete purchase correction.
+    await db.parts.put({ ...context.part, stok: preview.stock, hargaModal: preview.unitCost });
     await db.cash.update(context.entry.id, { amount: preview.cashAmount, meta: { ...context.entry.meta, purchase: { ...context.snapshot, qty: input.qty, stockAfter: preview.stock, costAfter: preview.unitCost, totalCost: input.totalCost, partVersion: (context.part._version ?? 0) + 1 } } });
     if (preview.refund) await addCash(actor, { type: "in", category: "restok_part", amount: preview.refund, method: input.method ?? methodOf(context.entry), note: `Pengembalian supplier — ${context.part.nama}`, refType: "part", refId: context.part.id, meta: { purchaseRefundFor: context.entry.id } });
     await db.corrections.add({ id: uid(), at: Date.now(), entity: "cash", entityId: context.entry.id, reason: input.reason.trim(), before, after, requestedBy: actor.id, requestedByName: actor.name, status: "approved", decidedBy: actor.id, decidedByName: actor.name, decidedAt: Date.now() });

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { exportBackup, restoreBackup } from "@/db/backup";
 import { closeCash } from "@/db/cash";
 import { db } from "@/db/db";
-import { deletePhoto } from "@/db/photos";
+import { addPhoto, deletePhoto } from "@/db/photos";
+import { getSetting, setSetting } from "@/db/settings";
 import { claimSyncBatch } from "@/db/sync";
 import { changeStatus, createTicket, submitServicePrice, usePart } from "@/db/tickets";
 import { UNDO_WINDOW_MS, undoServiceChange, withServiceUndo } from "@/db/undo";
@@ -45,21 +46,30 @@ async function finishedTicket() {
   return (await db.tickets.get(t.id))!;
 }
 
-test("undoing intake restores draft and its photo, removes new customer, and keeps original audit", async () => {
+test("silent draft edits create no undo receipts; submitting can still undo the complete intake", async () => {
   const draft = JSON.stringify({ ...input, device: "Samsung A15" });
-  await db.settings.put({ key: "draftServisBaru", value: draft });
-  await db.photos.add({ id: "undo-draft-photo", refType: "draft", refId: "servis-baru", blob: photo(), createdAt: 1 });
+  await setSetting("draftServisBaru", JSON.stringify({ customerName: "Pel" }));
+  await setSetting("draftServisBaru", JSON.stringify({ ...input, kelengkapan: [] }));
+  await setSetting("draftServisBaru", draft);
+  const draftPhotoId = await addPhoto(owner, "draft", "servis-baru", photo());
+  const removedPhotoId = await addPhoto(owner, "draft", "servis-baru", photo());
+  await deletePhoto(owner, removedPhotoId);
+  expect(await getSetting("draftServisBaru")).toBe(draft);
+  expect(await db.undoReceipts.count()).toBe(0);
+  expect(await db.tickets.count()).toBe(0);
+  expect(await db.audit.count()).toBe(0);
   const result = await withServiceUndo(owner, "Nota dibuat", () => createTicket(owner, input, [], "tunai", undefined, "servis-baru"));
   expect(result.undo).not.toBeNull();
+  expect(await db.undoReceipts.count()).toBe(1);
   expect(result.undo!.expiresAt - Date.now()).toBeLessThanOrEqual(UNDO_WINDOW_MS);
   const originalAudit = await db.audit.toArray();
   expect(originalAudit.length).toBeGreaterThan(0);
-  expect((await db.photos.get("undo-draft-photo"))?.refId).toBe(result.value.id);
+  expect((await db.photos.get(draftPhotoId))?.refId).toBe(result.value.id);
   await undoServiceChange(owner, result.undo!.id);
   expect(await db.tickets.get(result.value.id)).toBeUndefined();
   expect(await db.customers.count()).toBe(0);
   expect((await db.settings.get("draftServisBaru"))?.value).toBe(draft);
-  const restoredPhoto = (await db.photos.get("undo-draft-photo"))!;
+  const restoredPhoto = (await db.photos.get(draftPhotoId))!;
   expect(restoredPhoto.refType).toBe("draft");
   expect(restoredPhoto.refId).toBe("servis-baru");
   expect(await restoredPhoto.blob.text()).toBe("kondisi awal");
