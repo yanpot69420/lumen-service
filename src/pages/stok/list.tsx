@@ -91,6 +91,9 @@ export function StokPage() {
 function UnitTab() {
   const user = useUser();
   const money = canSeeMoney(user.role);
+  const tableColumns = money
+    ? "lg:min-w-[720px] lg:grid-cols-[56px_minmax(0,1fr)_100px_120px_130px_16px]"
+    : "lg:grid-cols-[56px_minmax(0,1fr)_110px_150px_16px]";
   const [q, setQ] = useState("");
   const [showSold, setShowSold] = useState(false);
   const units = useLiveQuery(
@@ -145,15 +148,15 @@ function UnitTab() {
           hint="Tekan “Beli Unit” saat menerima HP dari penjual."
         />
       )}
-      <div className={cn("space-y-4 lg:space-y-0 lg:overflow-hidden lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white", !filtered?.length && "hidden")}>
-      {!!filtered?.length && <div className="hidden grid-cols-[56px_minmax(0,1fr)_110px_150px_16px] gap-4 border-b border-slate-200/70 bg-slate-50 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 lg:grid"><span className="col-span-2">Perangkat / identitas</span><span>Status</span><span className="text-right">Nilai unit</span><span /></div>}
+      <div className={cn("space-y-4 lg:space-y-0 lg:overflow-x-auto lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white", !filtered?.length && "hidden")}>
+      {!!filtered?.length && <div className={cn("hidden gap-4 border-b border-slate-200/70 bg-slate-50 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 lg:grid", tableColumns)}><span className="col-span-2">Perangkat / identitas</span><span>Status</span>{money && <span className="text-right">Harga beli</span>}<span className="text-right">Nilai unit</span><span /></div>}
       {filtered?.map((u) => {
         const umur = daysSince(u.boughtAt);
         return (
           <Link
             key={u.id}
             to={`/app/stok/unit/${u.id}`}
-            className="group grid grid-cols-[64px_minmax(0,1fr)] items-start gap-x-3 gap-y-4 rounded-3xl border border-white bg-white p-4 shadow-sm hover:border-brand-300 lg:grid-cols-[56px_minmax(0,1fr)_110px_150px_16px] lg:items-center lg:gap-4 lg:rounded-none lg:border-0 lg:border-b lg:border-slate-100 lg:px-5 lg:py-4 lg:shadow-none lg:last:border-b-0 lg:hover:bg-brand-50/50"
+            className={cn("group grid grid-cols-[64px_minmax(0,1fr)] items-start gap-x-3 gap-y-4 rounded-3xl border border-white bg-white p-4 shadow-sm hover:border-brand-300 lg:items-center lg:gap-4 lg:rounded-none lg:border-0 lg:border-b lg:border-slate-100 lg:px-5 lg:py-4 lg:shadow-none lg:last:border-b-0 lg:hover:bg-brand-50/50", tableColumns)}
           >
             <FirstPhoto refType="unit" refId={u.id} className="size-16 shrink-0 rounded-2xl lg:size-14" />
             <div className="min-w-0 flex-1">
@@ -173,6 +176,7 @@ function UnitTab() {
             </div>
             <div className="hidden flex-col items-start gap-2 lg:flex"><UnitStatusTag status={u.status} />{u.status === "stok" && umur > 60 && <span className="text-[11px] font-medium text-red-500">{umur} hari di stok</span>}</div>
             <div className="col-span-2 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 lg:hidden"><span className="font-mono text-[11px] font-medium text-slate-400">{u.kode}</span><ChevronRight className="size-4 text-slate-300" /></div>
+            {money && <p className="hidden whitespace-nowrap text-right text-sm tabular-nums text-slate-600 lg:block">{rp(u.hargaBeli)}</p>}
             <div className="col-span-2 -mt-3 flex items-center justify-between gap-3 text-sm lg:col-span-1 lg:mt-0 lg:block lg:border-0 lg:pt-0 lg:text-right">
               {u.status === "stok" ? (
                 <>
@@ -180,7 +184,7 @@ function UnitTab() {
                     {u.hargaJual ? rp(u.hargaJual) : "—"}
                   </p>
                   {money && (
-                    <p className="text-xs text-slate-400">Modal {rp(u.hargaBeli)}</p>
+                    <p className="text-xs text-slate-400 lg:hidden">Harga beli {rp(u.hargaBeli)}</p>
                   )}
                 </>
               ) : money ? (
@@ -203,6 +207,9 @@ function UnitTab() {
 function PartTab() {
   const user = useUser();
   const money = canSeeMoney(user.role);
+  const tableColumns = money
+    ? "lg:min-w-[720px] lg:grid-cols-[minmax(0,1fr)_90px_80px_120px_120px_16px]"
+    : "lg:grid-cols-[minmax(0,1fr)_110px_100px_110px_16px]";
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const parts = useLiveQuery(() => db.parts.orderBy("nama").toArray(), []);
@@ -377,20 +384,22 @@ function PartTab() {
       {!!parts?.length && filtered?.length === 0 && (
         <EmptyState icon={<Search />} title="Tidak ada barang yang cocok" hint="Coba nama lain atau reset pencarian dan filter." />
       )}
-      <div className={cn("space-y-4 lg:space-y-0 lg:overflow-hidden lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white", !filtered?.length && "hidden")}>
-      {!!filtered?.length && <div className="hidden grid-cols-[minmax(0,1fr)_110px_100px_110px_16px] items-center gap-4 border-b border-slate-200/70 bg-slate-50 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 lg:grid"><span>Barang / kategori</span><span>Merek</span><span>Stok</span><span className="text-right">Harga jual</span><span /></div>}
+      <div className={cn("space-y-4 lg:space-y-0 lg:overflow-x-auto lg:rounded-[22px] lg:border lg:border-slate-200/80 lg:bg-white", !filtered?.length && "hidden")}>
+      {!!filtered?.length && <div className={cn("hidden items-center gap-4 border-b border-slate-200/70 bg-slate-50 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 lg:grid", tableColumns)}><span>Barang / kategori</span><span>Merek</span><span>Stok</span>{money && <span className="text-right" title="Modal rata-rata per pcs">Harga beli</span>}<span className="text-right">Harga jual</span><span /></div>}
       {filtered?.map((p) => (
         <PartRow
           key={p.id}
           onClick={money ? () => openEdit(p) : undefined}
           className={cn(
-            "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-4 rounded-3xl border border-white bg-white p-4 text-left shadow-sm lg:grid-cols-[minmax(0,1fr)_110px_100px_110px_16px] lg:items-center lg:gap-4 lg:rounded-none lg:border-0 lg:border-b lg:border-slate-100 lg:px-5 lg:py-4 lg:shadow-none lg:last:border-b-0",
+            "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-4 rounded-3xl border border-white bg-white p-4 text-left shadow-sm lg:items-center lg:gap-4 lg:rounded-none lg:border-0 lg:border-b lg:border-slate-100 lg:px-5 lg:py-4 lg:shadow-none lg:last:border-b-0",
+            tableColumns,
             money && "hover:border-brand-300 lg:hover:bg-brand-50/50",
           )}
         >
           <div className="min-w-0 flex-1">
             <p className="break-words text-base font-semibold leading-snug lg:truncate lg:text-sm lg:text-brand-950">{p.nama}</p>
             <p className="mt-2 text-xs text-slate-400 lg:mt-1.5"><span className="mr-1 inline-flex rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-600 lg:hidden">{getPartBrand(p)}</span> <span className="capitalize">{p.kategori}</span></p>
+            {money && <p className="mt-2 text-xs tabular-nums text-slate-500 lg:hidden">Harga beli {rp(p.hargaModal)} / pcs</p>}
           </div>
           <span className="hidden text-xs font-medium text-slate-600 lg:block">{getPartBrand(p)}</span>
           <Tag
@@ -401,6 +410,7 @@ function PartTab() {
           >
             {p.stok}<span className="hidden pl-1 font-normal opacity-70 lg:inline">pcs</span><span className="text-[9px] font-medium uppercase tracking-wide lg:hidden">{p.stok === 0 ? "habis" : p.stok <= p.minStok ? "menipis" : "stok"}</span>
           </Tag>
+          {money && <p className="hidden whitespace-nowrap text-right text-sm tabular-nums text-slate-600 lg:block">{rp(p.hargaModal)}</p>}
           <div className="col-span-2 flex items-center justify-between border-t border-slate-100 pt-3 lg:contents"><p className="font-bold tabular-nums lg:text-right lg:text-sm lg:text-brand-950">{rp(p.hargaJual)}<span className="ml-1 text-xs font-normal text-slate-400 lg:hidden">/ pcs</span></p>{money && <span className="flex items-center gap-1 text-xs text-slate-400 lg:hidden">Kelola <ChevronRight className="size-4" /></span>}</div>
           {money ? <ChevronRight className="hidden size-4 text-slate-300 group-hover:text-brand-700 lg:block" /> : <span className="hidden lg:block" />}
         </PartRow>
