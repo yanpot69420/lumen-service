@@ -15,6 +15,8 @@ const text = (v: unknown) => typeof v === "string";
 const filled = (v: unknown) => text(v) && (v as string).trim().length > 0;
 const number = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 const choice = (v: unknown, values: unknown[]) => values.includes(v);
+const purchaseSnapshot = (v: unknown) => object(v) && ["qty", "stockBefore", "costBefore", "stockAfter", "costAfter", "totalCost", "partVersion"].every((key) => number(v[key])) && (v.qty as number) > 0 && v.stockAfter === (v.stockBefore as number) + (v.qty as number);
+const purchaseDetail = (v: unknown) => object(v) && filled(v.partId) && ["qty", "stock", "unitCost", "totalCost"].every((key) => number(v[key])) && (v.qty as number) > 0 && choice(v.kind, ["record", "refund"]);
 
 /** Validate every table before opening a destructive transaction. */
 export function validateBackup(raw: unknown): BackupPayload {
@@ -60,8 +62,10 @@ export function validateBackup(raw: unknown): BackupPayload {
       if (table === "parts" && r.brand !== undefined && (!text(r.brand) || !normalizePartBrand(r.brand as string))) fail("merek part rusak");
       if (table === "cash" && (!choice(r.type, ["in", "out"]) || !choice(r.category, ["servis", "jual_unit", "retur_unit", "jual_aksesoris", "beli_unit", "restok_part", "operasional", "prive", "modal_masuk", "lainnya"]) || !choice(r.method, [undefined, "tunai", "qris", "transfer"]) || !choice(r.locked, [0, 1]) || !choice(r.voided, [0, 1]))) fail("jurnal kas rusak");
       if (table === "cash" && r.meta !== undefined && (!object(r.meta) || (r.meta.modal !== undefined && !number(r.meta.modal)) || (r.meta.qty !== undefined && (!number(r.meta.qty) || (r.meta.qty as number) === 0)) || !choice(r.meta.paymentKind, [undefined, "dp", "settlement", "piutang", "refund"]))) fail("snapshot jurnal kas rusak");
+      if (table === "cash" && object(r.meta) && ((r.meta.purchase !== undefined && !purchaseSnapshot(r.meta.purchase)) || (r.meta.purchaseRefundFor !== undefined && !filled(r.meta.purchaseRefundFor)))) fail("snapshot pembelian rusak");
       if (table === "dayCloses" && (![r.expected, r.selisih].every((v) => typeof v === "number" && Number.isSafeInteger(v)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(r.dayKey)))) fail("tutup kas rusak");
       if (table === "corrections" && (!choice(r.status, ["pending", "approved", "rejected"]) || ![r.before, r.after].every((v) => object(v) && number(v.amount) && text(v.note) && choice(v.voided, [0, 1])))) fail("koreksi rusak");
+      if (table === "corrections" && [r.before, r.after].some((v) => object(v) && v.purchase !== undefined && !purchaseDetail(v.purchase))) fail("rincian koreksi pembelian rusak");
       if (table === "photos" && (!choice(r.refType, ["ticket", "unit", "unit-ktp", "draft"]) || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(String(r.dataUrl)))) fail("foto rusak");
     }
   }
@@ -75,6 +79,18 @@ export function validateBackup(raw: unknown): BackupPayload {
   if (new Set(identities).size !== identities.length) fail("pelanggan duplikat");
   const tickets = new Set(result.tickets.map((r) => r.id));
   const units = new Set(result.units.map((r) => r.id));
+  const parts = new Set(result.parts.map((r) => r.id));
+  const cash = new Map(result.cash.map((r) => [r.id, r]));
+  if (result.cash.some((entry) => {
+    if (entry.meta?.purchase && (entry.type !== "out" || entry.category !== "restok_part" || entry.refType !== "part" || !parts.has(entry.refId ?? ""))) return true;
+    if (!entry.meta?.purchaseRefundFor) return false;
+    const source = cash.get(entry.meta.purchaseRefundFor);
+    return entry.type !== "in" || entry.category !== "restok_part" || entry.refType !== "part" || !source?.meta?.purchase || source.refId !== entry.refId;
+  })) fail("referensi pembelian atau pengembalian supplier hilang");
+  if (result.corrections.some((correction) => {
+    const before = correction.before.purchase; const after = correction.after.purchase;
+    return (before || after) && (!before || !after || before.partId !== after.partId || before.kind !== after.kind || !parts.has(after.partId) || cash.get(correction.entityId)?.refId !== after.partId);
+  })) fail("referensi koreksi pembelian hilang");
   if (result.tickets.some((r) => r.garansiDari !== undefined && (!tickets.has(r.garansiDari) || r.garansiDari === r.id))) fail("referensi garansi hilang atau tidak valid");
   const stockImeis = result.units.filter((r) => r.status === "stok").map((r) => r.imei);
   if (new Set(stockImeis).size !== stockImeis.length) fail("IMEI ganda pada stok aktif");

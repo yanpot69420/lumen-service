@@ -1,5 +1,7 @@
 # Audit alur stok sparepart dan kas — 21 Oktober 2026
 
+Catatan ini merekam kondisi sebelum perbaikan. Alur penggantinya didokumentasikan pada [Koreksi Pembelian](PURCHASE_CORRECTIONS.md).
+
 Pemeriksaan mencakup fungsi transaksi lokal, langganan perubahan yang dipakai halaman Kas, izin Head Operasional dan Owner di PostgreSQL, serta pembacaan stok, jurnal kas, jurnal koreksi, dan audit pada deployment. Tidak ada transaksi percobaan atau perubahan data bisnis pada production.
 
 ## Temuan

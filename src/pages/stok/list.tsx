@@ -3,6 +3,7 @@ import { useUser } from "@/auth/session";
 import { PageBody, PageHeader } from "@/components/layout/app-shell";
 import { MethodPicker } from "@/components/method-picker";
 import { FirstPhoto } from "@/components/photos";
+import { PurchaseHistory } from "@/components/purchase-correction";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/dialog";
 import { Field, Input, RpInput, Select } from "@/components/ui/field";
@@ -232,6 +233,7 @@ function PartTab() {
   const [sellOpen, setSellOpen] = useState(false);
   const [restokPart, setRestokPart] = useState<Part | null>(null);
   const [adjustPart, setAdjustPart] = useState<Part | null>(null);
+  const [purchasePart, setPurchasePart] = useState<Part | null>(null);
   const [f, setF] = useState({
     nama: "",
     brand: "",
@@ -493,8 +495,8 @@ function PartTab() {
             <Field label="Stok minimum" hint="Peringatan saat menipis">
               <RpInput value={f.minStok} onChange={(n) => setF({ ...f, minStok: n })} />
             </Field>
-            <Field label="Harga modal /pcs">
-              <RpInput value={f.hargaModal} onChange={(n) => setF({ ...f, hargaModal: n })} />
+            <Field label="Harga modal /pcs" hint={editing ? "Untuk salah input pembelian, gunakan Koreksi Pembelian agar kas ikut diperbarui." : "Stok awal × modal per pcs otomatis menjadi kas keluar."}>
+              <RpInput value={f.hargaModal} disabled={!!editing} onChange={(n) => setF({ ...f, hargaModal: n })} />
             </Field>
             <Field label="Harga jual /pcs">
               <RpInput value={f.hargaJual} onChange={(n) => setF({ ...f, hargaJual: n })} />
@@ -524,6 +526,7 @@ function PartTab() {
               </Button>
             </div>
           )}
+          {editing && <Button variant="outline" className="w-full" onClick={() => { setFormOpen(false); setPurchasePart(editing); }}>Riwayat / Koreksi Pembelian</Button>}
           <Button size="lg" className="w-full" disabled={!f.nama.trim() || !f.brand || busy} onClick={save}>
             Simpan
           </Button>
@@ -595,6 +598,7 @@ function PartTab() {
 
       <RestokSheet part={restokPart} onClose={() => setRestokPart(null)} />
       <AdjustSheet part={adjustPart} onClose={() => setAdjustPart(null)} />
+      {purchasePart && <PurchaseHistory part={purchasePart} onClose={() => setPurchasePart(null)} />}
     </div>
   );
 }
@@ -680,6 +684,7 @@ function AdjustSheet({ part, onClose }: { part: Part | null; onClose: () => void
   return (
     <Sheet open onClose={onClose} title={`Penyesuaian Stok — ${part.nama}`}>
       <div className="space-y-4">
+        <p className="rounded-xl bg-accent-50 p-3 text-xs leading-relaxed text-accent-900">Untuk hasil hitung fisik atau barang rusak. Penyesuaian tidak mengubah kas. Jika jumlah atau harga pembelian salah input, gunakan Koreksi Pembelian.</p>
         <Field label="Stok hasil hitung fisik" required>
           <RpInput value={stok} onChange={setStok} />
         </Field>

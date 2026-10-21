@@ -139,6 +139,9 @@ test("upgrade preserves legacy duplicates for reconciliation, then matches the f
     await upgraded.query("delete from units where id=$1", [second.id]);
     await upgraded.exec(migration);
     await upgraded.exec(migration);
+    const purchaseMigration = await readFile(new URL("../supabase/migrations/202610210002_purchase_corrections.sql", import.meta.url), "utf8");
+    await upgraded.exec(purchaseMigration);
+    await upgraded.exec(purchaseMigration);
     const sql = "select pg_get_functiondef('public.apply_changes(uuid,jsonb)'::regprocedure) as definition";
     expect((await upgraded.query(sql)).rows).toEqual((await pg.query(sql)).rows);
     await expect(upgraded.query("insert into units select * from jsonb_populate_record(null::units,$1::jsonb)", [JSON.stringify({ ...M.units.toRemote(second), revision: 1 })])).rejects.toThrow("units_active_imei_unique");

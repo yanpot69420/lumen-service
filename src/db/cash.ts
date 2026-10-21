@@ -66,6 +66,7 @@ export async function closeCash(user: User, counted: number, note: string, displ
   });
 }
 function validateUnitCorrection(entry: CashEntry, after: { voided: 0 | 1 }) {
+  if (entry.category === "restok_part" && (entry.meta?.purchase || entry.meta?.purchaseRefundFor)) throw new Error("Gunakan Koreksi Pembelian agar stok, modal, dan kas diperbarui bersama");
   if (entry.category === "jual_unit" && after.voided) throw new Error("Pembatalan penjualan unit harus melalui Retur Unit");
   if (entry.category === "retur_unit" && after.voided) throw new Error("Jurnal retur unit tidak dapat dibatalkan karena unit sudah kembali ke stok. Koreksi nominal refund bila diperlukan.");
 }

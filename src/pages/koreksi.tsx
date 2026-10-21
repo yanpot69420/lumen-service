@@ -25,11 +25,11 @@ export function KoreksiPage() {
     toast(ok ? "Koreksi diterapkan" : "Koreksi ditolak");
   }
 
-  const badge = (s: Correction["status"]) =>
+  const badge = (s: Correction["status"], direct = false) =>
     s === "pending" ? (
       <Tag className="bg-accent-100 text-accent-800">Menunggu</Tag>
     ) : s === "approved" ? (
-      <Tag className="bg-brand-100 text-brand-800">Disetujui</Tag>
+      <Tag className="bg-brand-100 text-brand-800">{direct ? "Diterapkan" : "Disetujui"}</Tag>
     ) : (
       <Tag className="bg-red-100 text-red-700">Ditolak</Tag>
     );
@@ -54,10 +54,11 @@ export function KoreksiPage() {
                   · {fmtDateTime(k.at)}
                 </span>
               </p>
-              {badge(k.status)}
+              {badge(k.status, !!k.after.purchase)}
             </div>
             <p className="mt-1 text-sm text-slate-600">Alasan: {k.reason}</p>
             <div className="mt-2 rounded-xl bg-slate-50 p-3 text-sm">
+              {k.after.purchase && <div className="mb-2 border-b border-slate-200 pb-2"><p className="mb-1 text-xs font-semibold text-brand-700">{k.after.purchase.kind === "refund" ? "Pengembalian supplier" : "Koreksi pembelian"} · langsung diterapkan</p><Row label="Jumlah pembelian">{k.before.purchase?.qty} → <b>{k.after.purchase.qty} pcs</b></Row><Row label="Total biaya bersih">{rp(k.before.purchase?.totalCost ?? k.before.amount)} → <b>{rp(k.after.purchase.totalCost)}</b></Row><Row label="Stok">{k.before.purchase?.stock} → <b>{k.after.purchase.stock}</b></Row><Row label="Modal /pcs">{rp(k.before.purchase?.unitCost ?? 0)} → <b>{rp(k.after.purchase.unitCost)}</b></Row></div>}
               {k.after.voided === 1 ? (
                 <p className="font-medium text-red-600">
                   Pembatalan transaksi {rp(k.before.amount)} — {k.before.note}
@@ -92,7 +93,7 @@ export function KoreksiPage() {
             )}
             {k.status !== "pending" && k.decidedByName && (
               <p className="mt-2 text-xs text-slate-400">
-                Diputuskan {k.decidedByName} · {fmtDateTime(k.decidedAt!)}
+                {k.after.purchase ? "Diterapkan oleh" : "Diputuskan"} {k.decidedByName} · {fmtDateTime(k.decidedAt!)}
               </p>
             )}
           </div>

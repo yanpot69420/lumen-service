@@ -41,10 +41,10 @@ test("physical stock adjustment changes quantities without inventing cash paymen
   expect(await expectedCashToday()).toBe(-350_000);
 });
 
-test("editing an item's catalog cost does not rewrite historical purchase payments", async () => {
+test("catalog edits preserve the recorded cost and historical purchase payments", async () => {
   const id = await savePart(ho, part);
   await savePart(ho, { ...part, hargaModal: 90_000 }, id);
-  expect((await db.parts.get(id))?.hargaModal).toBe(90_000);
+  expect((await db.parts.get(id))?.hargaModal).toBe(70_000);
   expect(sumCash(await db.cash.toArray()).keluar).toBe(350_000);
 });
 
@@ -60,6 +60,8 @@ test("zero-payment restock followed by a physical recount leaves the purchase jo
 
 test("HO correction stays pending until Owner approval, then cash totals agree", async () => {
   await savePart(ho, part);
+  // Historical cash-only correction behavior remains supported for old rows.
+  await db.cash.toCollection().modify({ meta: undefined });
   const entry = (await db.cash.toArray())[0];
   await requestCorrection(ho, entry.id, { amount: 280_000, note: entry.note, voided: 0 }, "Diskon supplier belum dicatat", entry);
   const correction = (await db.corrections.toArray())[0];
@@ -75,6 +77,7 @@ test("HO correction stays pending until Owner approval, then cash totals agree",
 
 test("cash page's exact live queries refresh both the table and drawer after approval", async () => {
   await savePart(ho, part);
+  await db.cash.toCollection().modify({ meta: undefined });
   const entry = (await db.cash.toArray())[0];
   const tableAmounts: number[] = [];
   const drawerAmounts: number[] = [];

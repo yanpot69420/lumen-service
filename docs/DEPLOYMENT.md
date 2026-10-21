@@ -50,6 +50,7 @@ Selesaikan pekerjaan ini pada salinan/staging terlebih dahulu. Koordinasikan jed
    - [202610200006_simplify_part_brands.sql](/Users/mac/Workspace/lumen-service/supabase/migrations/202610200006_simplify_part_brands.sql)
    - [202610200007_customers.sql](/Users/mac/Workspace/lumen-service/supabase/migrations/202610200007_customers.sql)
    - [202610210001_preflight_integrity.sql](/Users/mac/Workspace/lumen-service/supabase/migrations/202610210001_preflight_integrity.sql)
+   - [202610210002_purchase_corrections.sql](/Users/mac/Workspace/lumen-service/supabase/migrations/202610210002_purchase_corrections.sql)
 
 3. Deploy versi baru fungsi `auth` dan `public`, lalu frontend dari build yang sama. Versi frontend lama tidak kompatibel dengan akses tabel yang kini ditutup. Jika server belum diperbarui, frontend baru menampilkan error dan mempertahankan antrean.
 4. Minta staf login ulang. PIN lama dipertahankan di penyimpanan privat server; hash SHA-256 lama di-upgrade saat login berhasil. Profil yang ditarik ke perangkat tidak lagi berisi hash PIN/recovery staf lain.
@@ -60,6 +61,8 @@ Migrasi tidak mengosongkan tabel bisnis. Hash dipindahkan ke skema `private`; ak
 Migrasi `202610210001_preflight_integrity.sql` menambahkan perlindungan IMEI stok aktif, sumber garansi, serta jurnal retur termasuk refund Rp0. Jika data lama memiliki IMEI ganda pada stok aktif, migrasi berhenti tanpa menghapus data; Owner perlu merekonsiliasi pencatatan di staging sebelum mencoba kembali. Frontend dan server terbaru harus dirilis bersama: klien lama yang mengirim retur tanpa jurnal refund Rp0 akan ditolak server dan antreannya perlu diperiksa.
 
 ## Perilaku data dan sinkronisasi
+
+Koreksi pembelian langsung oleh Owner/HO memerlukan migrasi `202610210002_purchase_corrections.sql` sebelum frontend baru dipasang. Migrasi mempertahankan data lama, menambahkan validasi transaksi pembelian lengkap, serta membatasi pengecualian hak koreksi HO hanya pada stok dan jurnal pembelian yang tertaut. Frontend baru menyimpan snapshot jumlah dan modal saat pembelian; klien lama yang mengubah modal sendiri atau melakukan restok tanpa snapshot ketika modal berubah perlu diperbarui. Jangan menerapkan koreksi pada data production sebelum migrasi dan frontend yang cocok siap. Lihat [PURCHASE_CORRECTIONS.md](PURCHASE_CORRECTIONS.md).
 
 - Satu transaksi lokal menyimpan entitas, kas, stok, audit, dan payload antreannya bersama. Server menerima satu transaksi tersebut melalui RPC atomik dengan ID pengiriman ulang dan pemeriksaan revisi.
 - Antrean tidak dihapus hanya karena membesar. Perubahan yang belum terkirim tidak ditimpa oleh pull. Jika ada konflik, status menampilkan error dan perubahan lokal tetap dipertahankan. Jangan menghapus data browser untuk mengatasi konflik; simpan backup dan rekonsiliasikan transaksi dengan Owner.
