@@ -2,6 +2,7 @@ import { canSeeMoney } from "@/auth/roles";
 import { useSession, useUser } from "@/auth/session";
 import { PageBody, PageHeader, ROLE_LABEL } from "@/components/layout/app-shell";
 import { db } from "@/db/db";
+import { BRAND_NAME } from "@/lib/brand";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   BarChart3,
@@ -57,7 +58,7 @@ export function MenuPage() {
     <>
       <div className="mobile-root-page lg:hidden">
         <PageBody>
-          <div className="pb-1 pt-2"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Lumen Service</p><h1 className="mt-1 text-[27px] font-bold tracking-tight text-brand-950">Ruang kerja</h1></div>
+          <div className="pb-1 pt-2"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{BRAND_NAME}</p><h1 className="mt-1 text-[27px] font-bold tracking-tight text-brand-950">Ruang kerja</h1></div>
           <div className="flex items-center gap-4 rounded-[28px] bg-brand-950 p-5 text-white">
             <div className="flex size-14 shrink-0 items-center justify-center rounded-[20px] bg-accent-500 text-2xl font-bold text-brand-950">{user.name.slice(0, 1).toUpperCase()}</div>
             <div className="min-w-0"><p className="truncate text-lg font-bold tracking-tight">{user.name}</p><span className="mt-1.5 inline-flex rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] text-white/75">{ROLE_LABEL[user.role]}</span></div>
@@ -74,7 +75,7 @@ export function MenuPage() {
             </div>
           </section>)}
           <button type="button" onClick={() => { void signOut(); }} className="flex min-h-14 w-full items-center justify-center gap-2.5 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700"><LogOut className="size-[18px]" /> Keluar dari akun</button>
-          <p className="pb-1 pt-1 text-center text-[10px] tracking-wide text-slate-500">Lumen Service · Sistem Operasional</p>
+          <p className="pb-1 pt-1 text-center text-[10px] tracking-wide text-slate-500">{BRAND_NAME} · Sistem Operasional</p>
         </PageBody>
       </div>
       <div className="hidden lg:block">
@@ -107,7 +108,7 @@ export function MenuPage() {
               </section>)}
             </div>
           </div>
-          <p className="pt-2 text-center text-[10px] tracking-wide text-slate-500">Lumen Service · Sistem Operasional</p>
+          <p className="pt-2 text-center text-[10px] tracking-wide text-slate-500">{BRAND_NAME} · Sistem Operasional</p>
         </PageBody>
       </div>
     </>

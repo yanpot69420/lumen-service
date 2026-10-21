@@ -21,6 +21,7 @@ import {
   encryptBackup,
 } from "@/lib/backup";
 import { validateBackup } from "@/lib/backup-schema";
+import { BRAND_NAME } from "@/lib/brand";
 import { USERNAME_RE, usernameSlug } from "@/lib/username";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Download, KeyRound, Plus, Upload, UserX } from "lucide-react";
@@ -39,7 +40,7 @@ export function PengaturanPage() {
         {canSeeMoney(user.role) && <WaSection />}
         {canSeeMoney(user.role) && <BackupSection />}
         <p className="pb-4 text-center text-xs text-slate-300">
-          Lumen Service v0.1 — data tersimpan di perangkat ini.
+          {BRAND_NAME} v0.1 — data tersimpan di perangkat ini.
         </p>
       </PageBody>
     </>
@@ -455,7 +456,7 @@ function BackupSection() {
       const blob = new Blob([out], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `lumen-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `dr-gadgetcare-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
       await setSetting("lastBackupAt", String(Date.now()));
@@ -476,7 +477,7 @@ function BackupSection() {
     if (!file) return;
     try {
       const raw = JSON.parse(await file.text());
-      if (raw.app !== "lumen-service") throw new Error("File bukan backup Lumen");
+      if (raw.app !== "lumen-service") throw new Error(`File bukan backup ${BRAND_NAME}`);
       if (raw.enc !== 1) validateBackup(raw);
       setImportEnc(raw.enc === 1);
       setImportPass("");
@@ -563,7 +564,7 @@ function BackupSection() {
             const text = JSON.stringify(payload);
             const blob = new Blob([passphrase.trim() ? JSON.stringify(await encryptBackup(text, passphrase.trim())) : text], { type: "application/json" });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement("a"); a.href = url; a.download = "lumen-sebelum-pemulihan.json"; a.click(); URL.revokeObjectURL(url);
+            const a = document.createElement("a"); a.href = url; a.download = "dr-gadgetcare-sebelum-pemulihan.json"; a.click(); URL.revokeObjectURL(url);
           } catch (e) { toast(e instanceof Error ? e.message : "Gagal mengunduh", "error"); }
         }}>Unduh salinan sebelum pemulihan terakhir</Button>
         {isCloud && <p className="text-xs text-slate-500">Pemulihan cloud dilakukan administrator dari backup database agar data server dan perangkat tetap konsisten.</p>}

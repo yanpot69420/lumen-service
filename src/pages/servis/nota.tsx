@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/brand";
 import { TICKET_STATUS_LABEL } from "@/components/ui/status-tag";
 import { db } from "@/db/db";
 import { getSetting } from "@/db/settings";
@@ -162,6 +163,7 @@ export function NotaPrintPage() {
 
       <div className="nota-print mx-auto w-[58mm] rounded-lg bg-white p-3 font-mono text-[11px] leading-relaxed shadow">
         <div className="text-center">
+          <BrandMark className="mb-2 size-12 rounded-none" />
           <p className="text-sm font-bold uppercase">{store.name}</p>
           {store.address && <p>{store.address}</p>}
           {store.phone && <p>WA: {store.phone}</p>}

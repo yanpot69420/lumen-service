@@ -1,6 +1,8 @@
 import { canSeeMoney } from "@/auth/roles";
 import { useUser } from "@/auth/session";
 import { BackupReminder } from "@/components/backup-reminder";
+import { BrandMark } from "@/components/brand";
+import { BRAND_NAME } from "@/lib/brand";
 import { PageBody, PageHeader } from "@/components/layout/app-shell";
 import { TicketStatusTag } from "@/components/ui/status-tag";
 import { sumCash } from "@/db/cash";
@@ -67,9 +69,9 @@ export function BerandaPage() {
         <PageBody>
           <div className="flex items-center justify-between gap-3 pb-1 pt-1">
             <div className="flex items-center gap-2.5">
-              <div className="flex size-10 items-center justify-center rounded-2xl bg-accent-500 text-xl font-black text-brand-950">L<span className="text-white">.</span></div>
+              <BrandMark />
               <div>
-                <p className="text-base font-extrabold tracking-tight text-brand-950">Lumen<span className="font-normal"> Service</span></p>
+                <p className="text-base font-extrabold tracking-tight text-brand-950">{BRAND_NAME}</p>
                 <p className="mt-0.5 text-[11px] text-slate-500">{new Date().toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", weekday: "long", day: "numeric", month: "long" })}</p>
               </div>
             </div>

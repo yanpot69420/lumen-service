@@ -5,6 +5,7 @@ import { db } from "@/db/db";
 import { isCloud } from "@/db/supabase";
 import { startSync, stopSync, syncNow, useSyncStatus } from "@/db/sync";
 import { cn } from "@/lib/cn";
+import { BRAND_NAME } from "@/lib/brand";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   BarChart3,
@@ -138,7 +139,7 @@ export function AppShell() {
         <Link to="/app/beranda" className="mb-7 mt-2 flex items-center gap-2.5 px-2">
           <BrandMark />
           <div>
-            <p className="text-sm font-bold tracking-tight text-brand-950">Lumen <span className="font-normal">Service</span></p>
+            <p className="text-sm font-bold tracking-tight text-brand-950">{BRAND_NAME}</p>
             <p className="mt-0.5 text-[10px] text-slate-400">Ruang kerja toko</p>
           </div>
         </Link>
@@ -261,7 +262,7 @@ export function PageHeader({
       <div className="page-header-inner flex h-14 items-center gap-3 px-4 lg:px-8">
         {back && <div className="page-header-back shrink-0">{back}</div>}
         <div className="min-w-0 flex-1">
-          <p className="page-header-eyebrow"><span className="lg:hidden">Lumen Service</span><span className="hidden lg:inline">Ruang kerja · Lumen Service</span></p>
+          <p className="page-header-eyebrow"><span className="lg:hidden">{BRAND_NAME}</span><span className="hidden lg:inline">Ruang kerja · {BRAND_NAME}</span></p>
           <h1 className="page-header-title truncate text-base font-bold lg:text-lg">{title}</h1>
           {subtitle && <p className="mt-1 hidden text-xs text-slate-500 lg:block">{subtitle}</p>}
         </div>

@@ -18,7 +18,7 @@ const choice = (v: unknown, values: unknown[]) => values.includes(v);
 
 /** Validate every table before opening a destructive transaction. */
 export function validateBackup(raw: unknown): BackupPayload {
-  if (!object(raw) || raw.app !== "lumen-service") fail("bukan file Lumen");
+  if (!object(raw) || raw.app !== "lumen-service") fail("bukan file D&R GadgetCare");
   const data = { ...(raw as Record<string, unknown>) };
   if (data.version === 1 && data.photos === undefined) data.photos = [];
   if (choice(data.version, [1, 2, 3]) && data.customers === undefined) data.customers = [];

@@ -1,6 +1,7 @@
 import { logAudit } from "./audit";
 import { db, isSharedSetting, uid } from "./db";
 import { operation } from "./operations";
+import { BRAND_NAME, storeDisplayName } from "@/lib/brand";
 import type { TicketStatus, User } from "./types";
 
 export const DEFAULT_WA_TEMPLATES: Record<TicketStatus, string> = {
@@ -21,7 +22,7 @@ export const DEFAULT_WA_TEMPLATES: Record<TicketStatus, string> = {
 };
 
 const DEFAULTS: Record<string, string> = {
-  storeName: "Lumen Service",
+  storeName: BRAND_NAME,
   storeTagline: "Servis HP & Jual Beli HP Second",
   storeAddress: "",
   storePhone: "",
@@ -34,7 +35,8 @@ const DEFAULTS: Record<string, string> = {
 
 export async function getSetting(key: string): Promise<string> {
   const row = await db.settings.get(key);
-  return row?.value ?? DEFAULTS[key] ?? "";
+  const value = row?.value ?? DEFAULTS[key] ?? "";
+  return key === "storeName" ? storeDisplayName(value) : value;
 }
 
 export async function setSetting(key: string, value: string) {

@@ -5,6 +5,7 @@ import { getSetting } from "@/db/settings";
 import { isCloud } from "@/db/supabase";
 import { rp } from "@/lib/format";
 import { waLink } from "@/lib/wa";
+import { BRAND_NAME, storeDisplayName } from "@/lib/brand";
 import {
   ArrowDown,
   ArrowRight,
@@ -25,7 +26,7 @@ import { Link } from "react-router-dom";
 
 export function useStoreProfile() {
   const [s, setS] = useState({
-    name: "Lumen Service",
+    name: BRAND_NAME,
     tagline: "",
     address: "",
     phone: "",
@@ -39,7 +40,7 @@ export function useStoreProfile() {
         await Promise.all(["storeName", "storeTagline", "storeAddress", "storePhone", "storeHours"].map(async (key) => [key, await getSetting(key)])),
       );
       if (!cancelled) setS({
-        name: p.storeName || "Lumen Service",
+        name: storeDisplayName(p.storeName),
         tagline: p.storeTagline || "",
         address: p.storeAddress || "",
         phone: p.storePhone || "",
@@ -63,9 +64,9 @@ export function PublicNav({ active }: { active: "home" | "katalog" | "cek"; }) {
   return (
     <header className="sticky top-0 z-30 border-b border-brand-950/8 bg-slate-50/95 backdrop-blur-xl">
       <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-x-6 px-5 sm:px-8">
-        <Link to="/" aria-label="Lumen Service — beranda" className="flex min-h-[72px] items-center gap-2.5">
+        <Link to="/" aria-label={`${BRAND_NAME} — beranda`} className="flex min-h-[72px] items-center gap-2.5">
           <BrandMark className="size-9 rounded-xl text-lg" />
-          <span className="text-[15px] font-bold tracking-tight text-brand-950">Lumen <span className="font-normal">Service</span></span>
+          <span className="text-[15px] font-bold tracking-tight text-brand-950">{BRAND_NAME}</span>
         </Link>
         <Link to="/app/login" className="inline-flex min-h-11 items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-brand-950 md:order-3">Area staf <ArrowUpRight className="size-3.5" /></Link>
         <nav aria-label="Navigasi publik" className="order-3 -mx-1 mb-3 grid w-[calc(100%+0.5rem)] grid-cols-3 gap-1 rounded-2xl border border-brand-950/6 bg-white/80 p-1 text-xs md:order-2 md:mb-0 md:flex md:w-auto md:border-0 md:bg-transparent md:text-[13px]">
@@ -86,7 +87,7 @@ export function PublicFooter() {
       <div className="mx-auto max-w-[1200px] px-5 pb-6 pt-10 sm:px-8 sm:pt-12">
         <div className="flex flex-col justify-between gap-7 border-b border-white/10 pb-8 sm:flex-row sm:items-start">
           <div>
-            <Link to="/" className="inline-flex items-center gap-2.5"><BrandMark className="size-9 rounded-xl text-lg" /><span className="text-base font-semibold tracking-tight">Lumen <span className="font-normal text-white/75">Service</span></span></Link>
+            <Link to="/" className="inline-flex items-center gap-2.5"><BrandMark className="size-9 rounded-xl" /><span className="text-base font-semibold tracking-tight">{BRAND_NAME}</span></Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/65">Teman untuk urusan servis dan pilihan HP Anda.</p>
           </div>
           <nav aria-label="Tautan footer" className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-white/75">
@@ -96,7 +97,7 @@ export function PublicFooter() {
           </nav>
         </div>
         <div className="flex flex-col justify-between gap-2 pt-6 text-[11px] text-white/55 sm:flex-row">
-          <p>© {new Date().getFullYear()} Lumen Service.</p>
+          <p>© {new Date().getFullYear()} {BRAND_NAME}.</p>
           <p>Servis HP · Jual beli HP second</p>
         </div>
       </div>
@@ -230,7 +231,7 @@ function ServiceIllustration() {
       <div className="absolute left-1/2 top-7 h-[332px] w-[194px] -translate-x-1/2 rotate-[-7deg] rounded-[34px] border-[5px] border-brand-800 bg-brand-950 p-1.5 shadow-[12px_20px_45px_-15px_rgba(0,0,0,.35)] sm:top-8 sm:h-[370px] sm:w-[216px] sm:rounded-[38px] lg:top-12 lg:h-[394px] lg:w-[228px]">
         <div className="relative flex h-full flex-col overflow-hidden rounded-[24px] bg-slate-50 px-4 pb-4 pt-6 sm:rounded-[28px]">
           <div className="absolute left-1/2 top-2 h-3.5 w-16 -translate-x-1/2 rounded-full bg-brand-950" />
-          <div className="mt-2 flex items-center justify-between"><span className="text-[9px] font-bold tracking-tight">Lumen Service</span><span className="size-1.5 rounded-full bg-brand-500" /></div>
+          <div className="mt-2 flex items-center justify-between gap-2"><span className="text-[9px] font-bold tracking-tight">{BRAND_NAME}</span><span className="size-1.5 shrink-0 rounded-full bg-brand-500" /></div>
           <p className="mt-6 text-[8px] font-medium text-slate-500">Perangkat Anda, kami bantu rawat.</p>
           <p className="mt-2 text-[20px] font-semibold leading-tight tracking-tight text-brand-950">Kembali<br />terhubung.</p>
           <div className="relative my-4 flex flex-1 items-center justify-center rounded-[20px] bg-slate-100">

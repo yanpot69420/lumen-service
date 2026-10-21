@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 import { publicCloudEnv } from "./scripts/public-cloud-env";
+import { BRAND_NAME } from "./src/lib/brand";
 
 // Port 3000: rentang 5041-5440 & 5549-5748 diblokir Windows di mesin dev ini.
 export default defineConfig(({ mode }) => {
@@ -18,10 +19,11 @@ export default defineConfig(({ mode }) => {
     tailwindcss(),
     VitePWA({
       registerType: "prompt",
-      includeAssets: ["icon.svg", "apple-touch-icon.png"],
+      includeAssets: ["icon.png", "apple-touch-icon.png", "brand-logo.jpg"],
       manifest: {
-        name: "Lumen Service",
-        short_name: "Lumen",
+        name: BRAND_NAME,
+        short_name: BRAND_NAME,
+        lang: "id",
         description:
           "Sistem operasional konter servis HP & jual beli HP second",
         start_url: "/app",

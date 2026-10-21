@@ -1,6 +1,7 @@
 import { hashPin, newSalt } from "@/auth/pin";
 import { useSession } from "@/auth/session";
 import { BrandMark } from "@/components/brand";
+import { BRAND_NAME } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
@@ -78,8 +79,8 @@ export function LoginPage() {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-slate-50 p-5 lg:p-8">
       <div className="mx-auto grid w-full max-w-[1120px] gap-8 lg:min-h-[650px] lg:grid-cols-[1.1fr_1fr]">
-        <section className="hidden flex-col rounded-[32px] bg-brand-950 p-10 text-white lg:flex xl:p-12" aria-label="Lumen Service">
-          <div className="flex items-center gap-3"><BrandMark /><p className="text-lg font-semibold tracking-tight">Lumen <span className="font-normal text-white/70">Service</span></p></div>
+        <section className="hidden flex-col rounded-[32px] bg-brand-950 p-10 text-white lg:flex xl:p-12" aria-label={BRAND_NAME}>
+          <div className="flex items-center gap-3"><BrandMark /><p className="text-lg font-semibold tracking-tight">{BRAND_NAME}</p></div>
           <div className="my-auto py-12">
             <p className="text-[10px] font-semibold uppercase tracking-[.18em] text-accent-400">Ruang kerja toko Anda</p>
             <h2 className="mt-5 text-[42px] font-semibold leading-[1.15] tracking-[-.05em]">Lebih teratur.<br /><span className="text-accent-400">Lebih mudah dilayani.</span></h2>
@@ -92,11 +93,11 @@ export function LoginPage() {
               ].map(({ Icon, title, hint }) => <div key={title} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-3.5"><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/[.06] text-accent-400"><Icon className="size-[18px]" /></span><div><p className="text-[13px] font-semibold">{title}</p><p className="mt-1 text-[11px] text-white/45">{hint}</p></div></div>)}
             </div>
           </div>
-          <p className="text-[10px] text-white/35">Lumen Service · Sistem operasional konter</p>
+          <p className="text-[10px] text-white/35">{BRAND_NAME} · Sistem operasional konter</p>
         </section>
         <div className="flex items-center justify-center py-6 lg:py-10">
         <div className="w-full max-w-[390px]">
-          <div className="mb-8 flex items-center justify-center gap-2.5 lg:hidden"><BrandMark /><p className="text-lg font-semibold tracking-tight text-brand-950">Lumen <span className="font-normal">Service</span></p></div>
+          <div className="mb-8 flex items-center justify-center gap-2.5 lg:hidden"><BrandMark /><p className="text-lg font-semibold tracking-tight text-brand-950">{BRAND_NAME}</p></div>
           <p className="text-[10px] font-semibold uppercase tracking-[.17em] text-brand-600">Akun staf</p>
           <h1 className="mt-3 text-[29px] font-semibold tracking-[-.045em] text-brand-950">Masuk ke ruang kerja</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-500">Selamat datang kembali. Gunakan akun toko Anda untuk melanjutkan.</p>

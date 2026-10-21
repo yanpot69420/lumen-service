@@ -8,6 +8,7 @@ import { db, uid } from "@/db/db";
 import { setSetting } from "@/db/settings";
 import type { User } from "@/db/types";
 import { USERNAME_RE, usernameSlug } from "@/lib/username";
+import { BRAND_NAME } from "@/lib/brand";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
@@ -16,7 +17,7 @@ export function SetupPage() {
   const nav = useNavigate();
   const toast = useToast();
   const userCount = useLiveQuery(() => db.users.count(), []);
-  const [storeName, setStoreName] = useState("Lumen Service");
+  const [storeName, setStoreName] = useState(BRAND_NAME);
   const [storePhone, setStorePhone] = useState("");
   const [setupToken, setSetupToken] = useState("");
   const [ownerName, setOwnerName] = useState("");
@@ -146,7 +147,7 @@ export function SetupPage() {
     <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 p-6">
       <div className="text-center">
         <BrandMark className="mx-auto mb-4 size-14 text-2xl" />
-        <h1 className="text-xl font-bold">Selamat datang di Lumen</h1>
+        <h1 className="text-xl font-bold">Selamat datang di {BRAND_NAME}</h1>
         <p className="mt-1 text-sm text-slate-500">
           Setup sekali di awal — buat akun Owner dan Head Operasional.
         </p>
@@ -233,7 +234,7 @@ export function SetupPage() {
       </div>
 
       <Button size="lg" disabled={!valid || busy} onClick={submit}>
-        Mulai Pakai Lumen
+        Mulai Pakai {BRAND_NAME}
       </Button>
     </div>
   );
