@@ -142,6 +142,25 @@ export type CashCategory =
 
 export type CashMethod = "tunai" | "qris" | "transfer";
 
+export interface PurchaseSnapshot {
+  qty: number;
+  stockBefore: number;
+  costBefore: number;
+  stockAfter: number;
+  costAfter: number;
+  totalCost: number;
+  partVersion: number;
+}
+
+export interface PurchaseCorrectionDetail {
+  partId: string;
+  qty: number;
+  stock: number;
+  unitCost: number;
+  totalCost: number;
+  kind: "record" | "refund";
+}
+
 export interface CashEntry extends Versioned {
   id: string;
   at: number;
@@ -153,7 +172,7 @@ export interface CashEntry extends Versioned {
   note: string;
   refType?: "ticket" | "unit" | "part";
   refId?: string;
-  meta?: { modal?: number; qty?: number; paymentKind?: "dp" | "settlement" | "piutang" | "refund"; };
+  meta?: { modal?: number; qty?: number; paymentKind?: "dp" | "settlement" | "piutang" | "refund"; purchase?: PurchaseSnapshot; purchaseRefundFor?: string; };
   by: string;
   byName: string;
   locked: 1 | 0;
@@ -177,8 +196,8 @@ export interface Correction extends Versioned {
   entity: "cash";
   entityId: string;
   reason: string;
-  before: { amount: number; note: string; voided: 1 | 0; };
-  after: { amount: number; note: string; voided: 1 | 0; };
+  before: { amount: number; note: string; voided: 1 | 0; purchase?: PurchaseCorrectionDetail; };
+  after: { amount: number; note: string; voided: 1 | 0; purchase?: PurchaseCorrectionDetail; };
   requestedBy: string;
   requestedByName: string;
   status: "pending" | "approved" | "rejected";

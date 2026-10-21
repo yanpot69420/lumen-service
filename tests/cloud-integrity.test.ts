@@ -177,3 +177,37 @@ test("cloud persists part brand and rejects unauthorized reclassification or inv
   const page = await asUser<{ result: { rows: { id: string; brand: string }[] } }>(cashier, "select sync_page('parts',$1,1) as result", [previous]);
   expect(page.rows[0].result.rows.find((p) => p.id === id)?.brand).toBe("Universal");
 });
+
+test("HO stock adjustment and Owner-approved purchase correction reach both cloud views", async () => {
+  const headOps = crypto.randomUUID(); const headOpsSession = crypto.randomUUID();
+  await pg.query("insert into auth.users values($1,'headops-audit@lumen.local')", [headOps]);
+  await pg.query("insert into auth.sessions values($1,$2)", [headOpsSession, headOps]);
+  await pg.query("insert into users(id,auth_id,name,username,role) values($1,$1,'HO Audit','ho-audit','headops')", [headOps]);
+  const asHeadOps = <T>(query: string, params: unknown[] = []) => pg.transaction(async (tx) => {
+    await tx.query("select set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.session_id',$2,true)", [headOps, headOpsSession]);
+    await tx.exec("set local role authenticated");
+    return tx.query<T>(query, params);
+  });
+  // Use an open business day, separate from the cash-closing fixture above.
+  const id = crypto.randomUUID(); const cashId = crypto.randomUUID(); const correctionId = crypto.randomUUID(); const at = Date.now() + 86400000;
+  const item = { id, nama: "LCD audit", brand: "Samsung", kategori: "sparepart", stok: 2, hargaModal: 70000, hargaJual: 100000, minStok: 1 };
+  const entry = { id: cashId, at, dayKey: dayKey(new Date(at)), type: "out", category: "restok_part", amount: 140000, note: "Stok awal LCD audit", refType: "part", refId: id, by: headOps, byName: "HO Audit", locked: 0, voided: 0 };
+  const change = (table: string, row: Record<string, unknown>, version: number) => ({ table: M[table].remote, key: row.id, expected_version: version, row: M[table].toRemote(row) });
+  const commitHO = (changes: unknown[]) => asHeadOps("select apply_changes($1,$2::jsonb)", [crypto.randomUUID(), JSON.stringify(changes)]);
+  await commitHO([change("parts", item, 0), change("cash", entry, 0)]);
+  await commitHO([change("parts", { ...item, stok: 3 }, 1)]);
+  expect((await pg.query<{ amount: number }>("select amount::int from cash_entries where id=$1", [cashId])).rows[0].amount).toBe(140000);
+  const correction = { id: correctionId, at, entity: "cash", entityId: cashId, reason: "Jumlah pembelian awal salah ketik", before: { amount: 140000, note: entry.note, voided: 0 }, after: { amount: 210000, note: entry.note, voided: 0 }, requestedBy: headOps, requestedByName: "HO Audit", status: "pending" };
+  await commitHO([change("corrections", correction, 0)]);
+  await expect(commitHO([change("cash", { ...entry, amount: 210000 }, 1)])).rejects.toThrow("Owner");
+  await asUser(owner, "select apply_changes($1,$2::jsonb)", [crypto.randomUUID(), JSON.stringify([
+    change("cash", { ...entry, amount: 210000 }, 1),
+    change("corrections", { ...correction, status: "approved", decidedBy: owner, decidedByName: "Owner", decidedAt: at }, 1),
+  ])]);
+  const cashPage = await asHeadOps<{ result: { rows: Record<string, unknown>[] } }>("select sync_page('cash_entries',null,500) as result");
+  const cashRow = cashPage.rows[0].result.rows.find((row) => row.id === cashId)!;
+  expect(M.cash.toLocal(cashRow)).toMatchObject({ amount: 210000, by: headOps, refId: id });
+  const stockRow = (await pg.query<{ stok: number; harga_modal: number }>("select stok,harga_modal::int from parts where id=$1", [id])).rows[0];
+  expect(stockRow).toEqual({ stok: 3, harga_modal: 70000 });
+  expect((await pg.query<{ status: string }>("select status from corrections where id=$1", [correctionId])).rows[0].status).toBe("approved");
+});
