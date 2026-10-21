@@ -169,7 +169,7 @@ function UnitTab() {
                   <Tag className="bg-red-100 text-red-700 lg:hidden">{umur} hari</Tag>
                 )}
               </div>
-              <p className="mt-1 break-words text-base font-semibold leading-snug lg:mt-1 lg:truncate lg:text-sm lg:text-brand-950">
+              <p title={`${u.brand} ${u.model} ${u.varian}`.trim()} className="mt-1 line-clamp-2 whitespace-normal break-words text-base font-semibold leading-snug lg:text-sm lg:text-brand-950">
                 {u.brand} {u.model} {u.varian}
               </p>
               <p className="mt-1 truncate text-xs text-slate-400">IMEI {u.imei}</p>
@@ -397,7 +397,7 @@ function PartTab() {
           )}
         >
           <div className="min-w-0 flex-1">
-            <p className="break-words text-base font-semibold leading-snug lg:truncate lg:text-sm lg:text-brand-950">{p.nama}</p>
+            <p title={p.nama} className="line-clamp-2 whitespace-normal break-words text-base font-semibold leading-snug lg:text-sm lg:text-brand-950">{p.nama}</p>
             <p className="mt-2 text-xs text-slate-400 lg:mt-1.5"><span className="mr-1 inline-flex rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-600 lg:hidden">{getPartBrand(p)}</span> <span className="capitalize">{p.kategori}</span></p>
             {money && <p className="mt-2 text-xs tabular-nums text-slate-500 lg:hidden">Harga beli {rp(p.hargaModal)} / pcs</p>}
           </div>
