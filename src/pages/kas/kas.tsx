@@ -2,6 +2,7 @@ import { canSeeMoney } from "@/auth/roles";
 import { useUser } from "@/auth/session";
 import { PageBody, PageHeader } from "@/components/layout/app-shell";
 import { MethodPicker, MethodTag } from "@/components/method-picker";
+import { PurchaseCorrection } from "@/components/purchase-correction";
 import { Button } from "@/components/ui/button";
 import { Field, Input, RpInput, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, Row } from "@/components/ui/misc";
@@ -29,6 +30,8 @@ export function KasPage() {
     [day],
   );
   const close = useLiveQuery(() => db.dayCloses.get(day), [day]);
+  const pendingCorrections = useLiveQuery(() => db.corrections.where("status").equals("pending").toArray(), []);
+  const pendingIds = new Set(pendingCorrections?.map((row) => row.entityId));
   // Dexie melacak tabel yang dibaca di dalam query — otomatis segar saat
   // ada koreksi nominal sekalipun jumlah entri tidak berubah.
   const expected = useLiveQuery(() => expectedCashToday(), []);
@@ -36,6 +39,7 @@ export function KasPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [korEntry, setKorEntry] = useState<CashEntry | null>(null);
+  const [purchaseEntry, setPurchaseEntry] = useState<CashEntry | null>(null);
 
   if (!canSeeMoney(user.role)) return <PageBody>Halaman Kas khusus Owner / Head Operasional.</PageBody>;
   const { masuk, keluar } = sumCash(entries ?? []);
@@ -152,6 +156,7 @@ export function KasPage() {
                   <span className="lg:hidden"><MethodTag method={methodOf(e)} /></span>
                   {e.voided === 1 && " · DIBATALKAN"}
                 </p>
+                {pendingIds.has(e.id) && <p className="mt-2 text-xs font-medium text-accent-800">{e.category === "restok_part" ? "Ada pengajuan koreksi lama yang belum diterapkan" : "Koreksi menunggu persetujuan"}</p>}
                 <p className={cn("mt-3 text-base font-bold tabular-nums lg:hidden", e.type === "in" ? "text-brand-700" : "text-slate-600", e.voided === 1 && "line-through")}>{e.type === "in" ? "+" : "−"}{rp(e.amount)}</p>
               </div>
               <div className="hidden lg:block"><MethodTag method={methodOf(e)} /></div>
@@ -169,7 +174,11 @@ export function KasPage() {
                 <Lock className="size-3.5 shrink-0 text-slate-300 lg:justify-self-center" />
               ) : (
                 <button
-                  onClick={() => setKorEntry(e)}
+                  onClick={() => {
+                    if (e.meta?.purchaseRefundFor) toast("Pengembalian supplier yang sudah dicatat memerlukan rekonsiliasi jika nominalnya salah.", "info");
+                    else if (e.category === "restok_part" && e.type === "out" && e.refType === "part") setPurchaseEntry(e);
+                    else setKorEntry(e);
+                  }}
                   className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-brand-50 hover:text-brand-600 lg:size-9 lg:rounded-lg"
                   aria-label="Ajukan koreksi"
                 >
@@ -191,6 +200,7 @@ export function KasPage() {
         expected={expected ?? 0}
       />
       <KoreksiSheet entry={korEntry} onClose={() => setKorEntry(null)} />
+      {purchaseEntry && <PurchaseCorrection entry={purchaseEntry} onClose={() => setPurchaseEntry(null)} />}
     </>
   );
 }

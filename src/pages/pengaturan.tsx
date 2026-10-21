@@ -24,7 +24,7 @@ import { validateBackup } from "@/lib/backup-schema";
 import { BRAND_NAME } from "@/lib/brand";
 import { USERNAME_RE, usernameSlug } from "@/lib/username";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Download, KeyRound, Plus, Upload, UserX } from "lucide-react";
+import { Download, KeyRound, Pencil, Plus, Upload, UserX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function PengaturanPage() {
@@ -59,57 +59,92 @@ function StoreSection() {
     notaFooter: "",
   });
   const [loaded, setLoaded] = useState(false);
+  const [saved, setSaved] = useState(f);
+  const [editing, setEditing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const dirty = Object.entries(f).some(([key, value]) => value !== saved[key as keyof typeof saved]);
 
   useEffect(() => {
     (async () => {
-      setF({
+      const values = {
         storeName: await getSetting("storeName"),
         storeTagline: await getSetting("storeTagline"),
         storeAddress: await getSetting("storeAddress"),
         storePhone: await getSetting("storePhone"),
         storeHours: await getSetting("storeHours"),
         notaFooter: await getSetting("notaFooter"),
-      });
+      };
+      setF(values);
+      setSaved(values);
       setLoaded(true);
     })();
   }, []);
+
+  async function save() {
+    if (submitting.current || !editing || !confirmOpen || !dirty || !f.storeName.trim()) return;
+    submitting.current = true;
+    setBusy(true);
+    try {
+      const values = Object.fromEntries(Object.entries(f).map(([key, value]) => [key, value.trim()])) as typeof f;
+      await saveStoreSettings(user, values);
+      setF(values);
+      setSaved(values);
+      setConfirmOpen(false);
+      setEditing(false);
+      toast("Profil toko disimpan");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Profil toko gagal disimpan", "error");
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
 
   if (!loaded) return null;
   return (
     <Card>
       <CardHeader>
         <CardTitle>Profil Toko</CardTitle>
+        {!editing && <Button variant="outline" size="sm" aria-label="Edit profil toko" onClick={() => setEditing(true)}><Pencil /> Edit</Button>}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <Field label="Nama toko">
-          <Input value={f.storeName} onChange={(e) => setF({ ...f, storeName: e.target.value })} />
-        </Field>
-        <Field label="Tagline (web publik)">
-          <Input value={f.storeTagline} onChange={(e) => setF({ ...f, storeTagline: e.target.value })} />
-        </Field>
-        <Field label="Alamat">
-          <Textarea value={f.storeAddress} onChange={(e) => setF({ ...f, storeAddress: e.target.value })} />
-        </Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="No. WA toko">
-            <Input inputMode="tel" value={f.storePhone} onChange={(e) => setF({ ...f, storePhone: e.target.value })} />
-          </Field>
-          <Field label="Jam buka">
-            <Input value={f.storeHours} onChange={(e) => setF({ ...f, storeHours: e.target.value })} />
-          </Field>
-        </div>
-        <Field label="Catatan kaki nota">
-          <Input value={f.notaFooter} onChange={(e) => setF({ ...f, notaFooter: e.target.value })} />
-        </Field>
-        <Button
-          onClick={async () => {
-            await saveStoreSettings(user, f);
-            toast("Profil toko disimpan");
-          }}
-        >
-          Simpan
-        </Button>
+      <CardContent>
+        <form className="space-y-4" aria-label="Profil toko" onSubmit={(event) => {
+          event.preventDefault();
+          if (editing && !busy && dirty && f.storeName.trim()) setConfirmOpen(true);
+        }}>
+          <fieldset disabled={!editing || busy || confirmOpen} className="min-w-0 space-y-4">
+            <Field label="Nama toko" required>
+              <Input required value={f.storeName} onChange={(e) => setF({ ...f, storeName: e.target.value })} />
+            </Field>
+            <Field label="Tagline (web publik)">
+              <Input value={f.storeTagline} onChange={(e) => setF({ ...f, storeTagline: e.target.value })} />
+            </Field>
+            <Field label="Alamat">
+              <Textarea value={f.storeAddress} onChange={(e) => setF({ ...f, storeAddress: e.target.value })} />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="No. WA toko">
+                <Input inputMode="tel" value={f.storePhone} onChange={(e) => setF({ ...f, storePhone: e.target.value })} />
+              </Field>
+              <Field label="Jam buka">
+                <Input value={f.storeHours} onChange={(e) => setF({ ...f, storeHours: e.target.value })} />
+              </Field>
+            </div>
+            <Field label="Catatan kaki nota">
+              <Input value={f.notaFooter} onChange={(e) => setF({ ...f, notaFooter: e.target.value })} />
+            </Field>
+          </fieldset>
+          {editing && <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" disabled={busy || confirmOpen} onClick={() => { setF(saved); setEditing(false); }}>Batal</Button>
+            <Button type="submit" disabled={busy || confirmOpen || !dirty || !f.storeName.trim()}>Simpan</Button>
+          </div>}
+        </form>
       </CardContent>
+      <ConfirmDialog open={confirmOpen} title="Simpan perubahan profil toko?" confirmLabel={busy ? "Menyimpan…" : "Ya, simpan"} busy={busy} onCancel={() => { if (!submitting.current) setConfirmOpen(false); }} onConfirm={() => { void save(); }}>
+        Perubahan ini akan digunakan pada profil toko di web publik dan nota berikutnya.
+      </ConfirmDialog>
     </Card>
   );
 }
@@ -387,38 +422,69 @@ function WaSection() {
   const user = useUser();
   const toast = useToast();
   const [tpls, setTpls] = useState<Record<TicketStatus, string> | null>(null);
+  const [saved, setSaved] = useState<Record<TicketStatus, string> | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const dirty = !!tpls && !!saved && TICKET_STATUSES.some((status) => tpls[status] !== saved[status]);
 
   useEffect(() => {
-    getWaTemplates().then(setTpls);
+    getWaTemplates().then((values) => { setTpls(values); setSaved(values); });
   }, []);
+
+  async function save() {
+    if (submitting.current || !editing || !confirmOpen || !dirty || !tpls) return;
+    submitting.current = true;
+    setBusy(true);
+    try {
+      await saveStoreSettings(user, { waTemplates: JSON.stringify(tpls) });
+      setSaved(tpls);
+      setConfirmOpen(false);
+      setEditing(false);
+      toast("Template disimpan");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Template gagal disimpan", "error");
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
 
   if (!tpls) return null;
   return (
     <Card>
       <CardHeader>
         <CardTitle>Template Pesan WA</CardTitle>
+        {!editing && <Button variant="outline" size="sm" aria-label="Edit template pesan WA" onClick={() => setEditing(true)}><Pencil /> Edit</Button>}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-xs text-slate-400">
-          Placeholder: {"{nama} {nota} {tipe} {keluhan} {estimasi} {toko}"}
-        </p>
-        {TICKET_STATUSES.map((s) => (
-          <Field key={s} label={`Status: ${TICKET_STATUS_LABEL[s]}`}>
-            <Textarea
-              value={tpls[s]}
-              onChange={(e) => setTpls({ ...tpls, [s]: e.target.value })}
-            />
-          </Field>
-        ))}
-        <Button
-          onClick={async () => {
-            await saveStoreSettings(user, { waTemplates: JSON.stringify(tpls) });
-            toast("Template disimpan");
-          }}
-        >
-          Simpan Template
-        </Button>
+      <CardContent>
+        <form className="space-y-4" aria-label="Template pesan WA" onSubmit={(event) => {
+          event.preventDefault();
+          if (editing && !busy && dirty) setConfirmOpen(true);
+        }}>
+          <p className="text-xs text-slate-400">
+            Placeholder: {"{nama} {nota} {tipe} {keluhan} {estimasi} {toko}"}
+          </p>
+          <fieldset disabled={!editing || busy || confirmOpen} className="min-w-0 space-y-4">
+            {TICKET_STATUSES.map((s) => (
+              <Field key={s} label={`Status: ${TICKET_STATUS_LABEL[s]}`}>
+                <Textarea
+                  value={tpls[s]}
+                  onChange={(e) => setTpls({ ...tpls, [s]: e.target.value })}
+                />
+              </Field>
+            ))}
+          </fieldset>
+          {editing && <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" disabled={busy || confirmOpen} onClick={() => { if (saved) setTpls(saved); setEditing(false); }}>Batal</Button>
+            <Button type="submit" disabled={busy || confirmOpen || !dirty}>Simpan Template</Button>
+          </div>}
+        </form>
       </CardContent>
+      <ConfirmDialog open={confirmOpen} title="Simpan perubahan template WA?" confirmLabel={busy ? "Menyimpan…" : "Ya, simpan"} busy={busy} onCancel={() => { if (!submitting.current) setConfirmOpen(false); }} onConfirm={() => { void save(); }}>
+        Template baru akan digunakan saat Anda menyiapkan pesan WhatsApp berikutnya.
+      </ConfirmDialog>
     </Card>
   );
 }
