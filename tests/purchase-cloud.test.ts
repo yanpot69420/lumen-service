@@ -2,10 +2,10 @@ import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 import { readFile } from "node:fs/promises";
 import { db, markRemoteWrite } from "@/db/db";
-import { savePart, adjustPart } from "@/db/parts";
+import { savePart, adjustPart, restockPart } from "@/db/parts";
 import { correctPurchase, purchaseContext } from "@/db/purchases";
-import { requestCorrection, recordManualCash } from "@/db/cash";
-import { coalesceChanges, applyRemoteRows } from "@/db/sync";
+import { requestCorrection, recordManualCash, closeCash, expectedCashToday, decideCorrection } from "@/db/cash";
+import { coalesceChanges, applyRemoteRows, claimSyncBatch, acknowledgeSyncBatch } from "@/db/sync";
 import { M } from "@/db/sync-mappers";
 import { dayKey } from "@/lib/format";
 import type { User } from "@/db/types";
@@ -46,7 +46,7 @@ async function asActor<T>(actor: User, sql: string, params: unknown[] = []) {
   });
 }
 async function graph() {
-  const queued = await db.outbox.toArray();
+  const { batch: queued } = await claimSyncBatch();
   expect(new Set(queued.map((row) => row.batchId)).size).toBe(1);
   return coalesceChanges(queued).map((row) => ({ table: M[row.table].remote, key: row.key, expected_version: row.before?._version ?? 0, row: M[row.table].toRemote(row.payload) }));
 }
@@ -54,8 +54,8 @@ async function commit(changes: unknown[], batch = crypto.randomUUID(), actor = h
   return asActor<{ result: unknown }>(actor, "select apply_changes($1,$2::jsonb) as result", [batch, JSON.stringify(changes)]);
 }
 async function flush(actor = ho) {
-  const changes = await graph(); const batch = crypto.randomUUID(); const result = await commit(changes, batch, actor);
-  await db.outbox.clear();
+  const changes = await graph(); const queued = await db.outbox.toArray(); const batch = queued[0].batchId!; const result = await commit(changes, batch, actor);
+  await acknowledgeSyncBatch(queued, result.rows[0].result);
   for (const table of ["parts", "cash", "corrections"]) {
     const page = await asActor<{ result: { rows: Record<string, unknown>[] } }>(actor, "select sync_page($1,null,200) as result", [M[table].remote]);
     await applyRemoteRows(table, page.rows[0].result.rows);
@@ -76,6 +76,115 @@ test("real HO client graph atomically corrects purchase and remains idempotent o
   expect((await db.cash.get(entry.id))?.meta?.purchase).toMatchObject({ costAfter: 102000, totalCost: 408000, partVersion: 2 });
   expect((await db.cash.get(entry.id))?.amount).toBe(408000);
   expect((await db.corrections.toArray())[0]).toMatchObject({ status: "approved", decidedBy: ho.id });
+});
+
+test("a one-rupiah purchase correction syncs even when rounded inventory cost does not change", async () => {
+  const { id, entry } = await purchase();
+  await correctPurchase(ho, await purchaseContext(entry.id), { ...correction, totalCost: 551999 });
+  await flush();
+  expect(await db.parts.get(id)).toMatchObject({ stok: 4, hargaModal: 138000, _version: 2 });
+  expect((await db.cash.get(entry.id))?.amount).toBe(551999);
+});
+
+test("retry repairs an old rejected rounded-cost batch without changing its cash or correction payloads", async () => {
+  const { id, entry } = await purchase();
+  await correctPurchase(ho, await purchaseContext(entry.id), { ...correction, totalCost: 551999 });
+  // Reproduce the durable queue written by the old Dexie.update implementation.
+  await db.outbox.where("table").equals("parts").delete();
+  const original = await db.outbox.toArray();
+  const oldGraph = coalesceChanges(original).map((row) => ({ table: M[row.table].remote, key: row.key, expected_version: row.before?._version ?? 0, row: M[row.table].toRemote(row.payload) }));
+  await expect(commit(oldGraph, original[0].batchId)).rejects.toThrow("Koreksi pembelian harus menyertakan stok dan modal barang yang sama");
+  const first = await claimSyncBatch(); const second = await claimSyncBatch();
+  expect(first.batch.filter((row) => row.table === "parts")).toHaveLength(1);
+  expect(second.batch).toHaveLength(original.length + 1);
+  for (const row of original) expect((await db.outbox.get(row.seq!))?.payload).toEqual(row.payload);
+  const sent = await flush(); await commit(sent.changes, sent.batch);
+  expect(await db.outbox.count()).toBe(0);
+  expect(await db.parts.get(id)).toMatchObject({ stok: 4, hargaModal: 138000, _version: 2 });
+  expect((await db.cash.get(entry.id))?.amount).toBe(551999);
+  expect((await pg.query<{ count: number }>("select count(*)::int as count from corrections")).rows[0].count).toBe(1);
+});
+
+test("a rounded supplier refund syncs once and can be followed by another correction", async () => {
+  const { id, entry } = await purchase();
+  await correctPurchase(ho, await purchaseContext(entry.id), { ...correction, totalCost: 551999, kind: "refund" });
+  await db.outbox.where("table").equals("parts").delete();
+  const sent = await flush(); await commit(sent.changes, sent.batch);
+  expect(await db.parts.get(id)).toMatchObject({ hargaModal: 138000, _version: 2 });
+  expect((await db.cash.toArray()).filter((row) => row.type === "in").map((row) => row.amount)).toEqual([1]);
+  await correctPurchase(ho, await purchaseContext(entry.id), correction); await flush();
+  expect((await db.cash.get(entry.id))?.amount).toBe(408001);
+});
+
+test("an old rounded-cost queue repair still rejects a concurrent cloud stock change", async () => {
+  const { id, entry } = await purchase();
+  await correctPurchase(ho, await purchaseContext(entry.id), { ...correction, totalCost: 551999 });
+  await db.outbox.where("table").equals("parts").delete();
+  await pg.query("update parts set stok=5, revision=revision+1 where id=$1", [id]);
+  const changes = await graph();
+  await expect(commit(changes)).rejects.toThrow("Konflik");
+  expect(await db.outbox.count()).toBeGreaterThan(0);
+  expect((await pg.query<{ amount: number }>("select amount::int from cash_entries where id=$1", [entry.id])).rows[0].amount).toBe(552000);
+  expect((await pg.query<{ count: number }>("select count(*)::int as count from corrections")).rows[0].count).toBe(0);
+});
+
+test("a legacy rounded-cost queue can recover when its original stock and revision remain intact", async () => {
+  const { id, entry } = await purchase();
+  await pg.query("update cash_entries set meta=null where id=$1", [entry.id]);
+  await db.transaction("rw", db.cash, db.outbox, async () => { markRemoteWrite(); await db.cash.update(entry.id, { meta: undefined }); });
+  await correctPurchase(ho, await purchaseContext(entry.id), { ...correction, totalCost: 552001 });
+  await db.outbox.where("table").equals("parts").delete();
+  await flush();
+  expect(await db.parts.get(id)).toMatchObject({ stok: 4, hargaModal: 138000, _version: 2 });
+  expect((await db.cash.get(entry.id))?.amount).toBe(552001);
+});
+
+test("unreconciled later stock edits are preserved instead of guessed into an old failed purchase batch", async () => {
+  const { id, entry } = await purchase();
+  await correctPurchase(ho, await purchaseContext(entry.id), { ...correction, totalCost: 551999 });
+  await db.outbox.where("table").equals("parts").delete();
+  await adjustPart(ho, id, 5, "Hitung fisik setelah koreksi", 4);
+  const queued = await db.outbox.toArray();
+  const { batch } = await claimSyncBatch();
+  expect(batch.some((row) => row.table === "parts")).toBe(false);
+  expect(await db.outbox.count()).toBe(queued.length);
+  expect((await db.parts.get(id))?.stok).toBe(5);
+});
+
+test("cash closing still syncs after purchase corrections and supplier refunds", async () => {
+  await recordManualCash(ho, { type: "in", category: "modal_masuk", amount: 1_000_000, method: "tunai", note: "Modal kas" }); await flush();
+  const { entry } = await purchase();
+  await correctPurchase(ho, await purchaseContext(entry.id), { ...correction, kind: "refund" }); await flush();
+  const expected = await expectedCashToday();
+  await closeCash(ho, expected, "Sesuai hitung fisik", expected); await flush();
+  expect((await pg.query<{ counted: number }>("select counted::int from day_closes")).rows[0].counted).toBe(expected);
+  expect((await pg.query<{ count: number }>("select count(*)::int as count from cash_entries where not locked")).rows[0].count).toBe(0);
+});
+
+test("ordinary expense corrections by Owner still sync and update both the row and cash balance", async () => {
+  await recordManualCash(ho, { type: "out", category: "operasional", amount: 50000, method: "tunai", note: "Listrik" }); await flush();
+  const expense = (await db.cash.toArray())[0];
+  await requestCorrection(ho, expense.id, { amount: 45000, note: "Listrik sesuai struk", voided: 0 }, "Salah nominal", expense); await flush();
+  await decideCorrection(owner, (await db.corrections.toArray())[0].id, true); await flush(owner);
+  expect((await db.cash.get(expense.id))?.amount).toBe(45000);
+  expect(await expectedCashToday()).toBe(-45000);
+});
+
+test("multiple offline restocks send in order with the cloud revision for each purchase snapshot", async () => {
+  const { id } = await purchase();
+  await restockPart(ho, id, 2, 220000, "tunai");
+  await restockPart(ho, id, 2, 240000, "transfer");
+  while (await db.outbox.count()) {
+    const { batch } = await claimSyncBatch();
+    const changes = coalesceChanges(batch).map((row) => ({ table: M[row.table].remote, key: row.key, expected_version: row.before?._version ?? 0, row: M[row.table].toRemote(row.payload) }));
+    const result = await commit(changes, batch[0].batchId);
+    await acknowledgeSyncBatch(batch, result.rows[0].result);
+  }
+  const page = await asActor<{ result: { rows: Record<string, unknown>[] } }>(ho, "select sync_page('cash_entries',null,200) as result");
+  await applyRemoteRows("cash", page.rows[0].result.rows);
+  const purchases = (await db.cash.where("refId").equals(id).toArray()).sort((a, b) => a.meta!.purchase!.partVersion - b.meta!.purchase!.partVersion);
+  expect(purchases.map((row) => row.meta?.purchase?.partVersion)).toEqual([1, 2, 3]);
+  expect(purchases.map((row) => row.amount)).toEqual([552000, 220000, 240000]);
 });
 
 test("legacy purchase and its pending request can be reconciled by HO without Owner approval", async () => {

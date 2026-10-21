@@ -38,3 +38,13 @@ Jalankan migrasi `202610210002_purchase_corrections.sql` sebelum frontend baru. 
 Snapshot pembelian disimpan dalam metadata transaksi kas; rincian perubahan disimpan dalam JSON jurnal koreksi. Keduanya ikut sinkronisasi dan backup versi 4. Validasi backup menolak snapshot pembelian yang rusak sebelum pemulihan.
 
 Validasi server menghitung ulang hasil, memeriksa sumber kas, stok, batas refund, status kas, permintaan lama, dan peran pelaksana. Pengecualian HO tidak mengizinkan koreksi kas umum tanpa Owner atau perubahan referensi transaksi.
+
+### Pemulihan antrean koreksi dengan modal hasil pembulatan yang sama
+
+Versi sebelumnya dapat mengirim koreksi tanpa baris barang bila total pembelian berubah tetapi stok dan modal rata-rata hasil pembulatannya tetap sama. Contoh: 4 pcs dengan total Rp552.000 dikoreksi menjadi Rp551.999; modal masih Rp138.000/pcs. Penyimpanan lokal melewatkan nilai barang yang sama sehingga server menolak dengan pesan **Koreksi pembelian harus menyertakan stok dan modal barang yang sama**. Mengirim ulang antrean lama saja mengulang penolakan tersebut.
+
+Versi perbaikan selalu mengikutsertakan baris barang dalam transaksi koreksi. Saat sinkronisasi, aplikasi juga dapat melengkapi antrean lama khusus kasus ini dengan snapshot barang yang tidak berubah. Pemulihan tidak mengubah nominal, jumlah, alasan koreksi, atau ID batch; pemeriksaan revisi dan seluruh validasi server tetap berlaku. Jika ada perubahan barang berikutnya, revisi tidak cocok, atau rincian antrean meragukan, aplikasi mempertahankan antrean untuk rekonsiliasi dan tidak menebak data penggantinya.
+
+Untuk kasus yang cocok, setelah frontend perbaikan terpasang, buka kembali aplikasi pada browser/perangkat tempat koreksi dibuat, lalu pilih **Coba lagi**. Perbaikan ini tidak memerlukan migrasi SQL tambahan di atas migrasi koreksi pembelian. Jangan hapus data browser untuk membersihkan antrean yang belum terkirim.
+
+Konfirmasi pengiriman harus mencakup tepat seluruh baris dan revisi yang dikirim. Respons kosong, parsial, ganda, atau tidak sesuai tidak menghapus antrean. Konfirmasi terlambat dari tab lain juga tidak menurunkan revisi perubahan yang lebih baru.
