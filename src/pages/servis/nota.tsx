@@ -38,10 +38,10 @@ const Line = () => (
 function NotaRow({ l, r, bold }: { l: string; r: string; bold?: boolean; }) {
   return (
     <div
-      className={`flex justify-between gap-2 ${bold ? "font-bold" : ""}`}
+      className={`grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-start gap-2 ${bold ? "font-bold" : ""}`}
     >
-      <span>{l}</span>
-      <span className="text-right tabular-nums">{r}</span>
+      <span className="min-w-0">{l}</span>
+      <span className="min-w-0 text-right tabular-nums">{r}</span>
     </div>
   );
 }
@@ -88,7 +88,7 @@ export function NotaPrintPage() {
             <Printer /> Cetak Label
           </Button>
         </div>
-        <div className="nota-print mx-auto w-[58mm] rounded-lg bg-white p-3 font-mono text-[11px] leading-snug shadow">
+        <div className="nota-print mx-auto w-[58mm] max-w-full rounded-lg bg-white p-3 font-mono text-[11px] leading-snug shadow">
           <p className="text-center text-base font-black">{ticket.noNota}</p>
           <Line />
           <p className="font-bold">{ticket.customerName}</p>
@@ -161,7 +161,7 @@ export function NotaPrintPage() {
         </div>
       </div>
 
-      <div className="nota-print mx-auto w-[58mm] rounded-lg bg-white p-3 font-mono text-[11px] leading-relaxed shadow">
+      <div className="nota-print mx-auto w-[58mm] max-w-full rounded-lg bg-white p-3 font-mono text-[11px] leading-relaxed shadow">
         <div className="text-center">
           <BrandMark className="mb-2 size-12 rounded-none" />
           <p className="text-sm font-bold uppercase">{store.name}</p>
@@ -186,7 +186,10 @@ export function NotaPrintPage() {
               r={rp(ticketJasa(ticket))}
             />
             {ticket.partsUsed.map((p, i) => (
-              <NotaRow key={i} l={`${p.qty}x ${p.nama}`} r={rp(p.harga * p.qty)} />
+              <div key={i} className="my-1 min-w-0 break-inside-avoid">
+                <p>{p.nama}</p>
+                <NotaRow l={`${p.qty} pcs`} r={rp(p.harga * p.qty)} />
+              </div>
             ))}
             <Line />
             <NotaRow l="TOTAL" r={rp(ticketTotal(ticket))} bold />

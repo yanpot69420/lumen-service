@@ -74,6 +74,7 @@ export function ServisDetailPage() {
   const [method, setMethod] = useState<CashMethod>("tunai");
   const [partModal, setPartModal] = useState(false);
   const [partId, setPartId] = useState("");
+  const selectedPart = parts?.find((part) => part.id === partId);
   const [qty, setQty] = useState(1);
   const [cancelModal, setCancelModal] = useState<Ticket | null>(null);
   const [refundDp, setRefundDp] = useState(true);
@@ -515,6 +516,7 @@ export function ServisDetailPage() {
               ))}
             </Select>
           </Field>
+          {selectedPart && <p className="rounded-xl bg-slate-50 p-3 text-sm [overflow-wrap:anywhere]">{selectedPart.nama}</p>}
           <Field label="Jumlah">
             <Input
               inputMode="numeric"

@@ -46,7 +46,7 @@ export function KoreksiPage() {
           />
         )}
         {corrections?.map((k) => (
-          <div key={k.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div key={k.id} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 [overflow-wrap:anywhere]">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold">
                 {k.requestedByName}{" "}

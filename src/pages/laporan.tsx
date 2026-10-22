@@ -80,7 +80,7 @@ export function LaporanPage() {
           <CardHeader className="lg:border-b lg:border-slate-100 lg:px-6 lg:py-5">
             <CardTitle className="lg:flex lg:items-center lg:gap-2 lg:text-base"><BarChart3 className="hidden size-4 text-brand-600 lg:block" /> Rincian laba</CardTitle>
           </CardHeader>
-          <CardContent className="lg:px-6 lg:py-3 lg:[&>div]:py-3 lg:[&>div>span]:min-w-0 lg:[&>div>span:last-child]:break-words lg:[&>div>span:last-child]:tabular-nums">
+          <CardContent className="lg:px-6 lg:py-3 lg:[&>div]:py-3 lg:[&>div>:last-child]:tabular-nums">
             <Row label="Pendapatan servis">{rp(r.servisIn)}</Row>
             <Row label="− Modal sparepart terpakai">− {rp(r.partModal)}</Row>
             <Row label={`Margin jual HP (${r.unitSoldCount} unit)`}>

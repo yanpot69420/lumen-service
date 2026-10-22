@@ -46,7 +46,7 @@ export function AuditPage() {
                   {fmtDateTime(e.at)}
                 </span>
               </div>
-              <p className="mt-1 text-sm text-slate-600">{e.summary}</p>
+              <p className="mt-1 text-sm text-slate-600 [overflow-wrap:anywhere]">{e.summary}</p>
             </div>
           ))}
         </div>

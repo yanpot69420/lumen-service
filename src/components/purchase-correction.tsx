@@ -20,7 +20,7 @@ export function PurchaseHistory({ part, onClose }: { part: Part; onClose: () => 
   const entries = useLiveQuery(() => db.cash.where("refId").equals(part.id).and((row) => row.refType === "part" && row.category === "restok_part" && row.type === "out").reverse().sortBy("at"), [part.id]);
   if (entry) return <PurchaseCorrection entry={entry} onClose={() => setEntry(null)} />;
   return <Modal open title="Riwayat Pembelian" onClose={onClose}>
-    <p className="mb-4 break-words text-sm font-semibold">{currentPart?.nama ?? part.nama}</p>
+    <p className="mb-4 text-sm font-semibold [overflow-wrap:anywhere]">{currentPart?.nama ?? part.nama}</p>
     {entries === undefined ? <p role="status" className="text-sm text-slate-500">Memuat pembelian…</p> : !entries.length ? <p className="text-sm text-slate-500">Belum ada pembelian melalui kas untuk barang ini.</p> : <div className="space-y-3">{entries.map((row) => <div key={row.id} className="rounded-2xl border border-slate-200 p-4">
       <p className="text-xs text-slate-500">{fmtDateTime(row.at)} · {row.byName}</p>
       <div className="mt-2"><CashDescription entry={row} part={currentPart} /></div>
