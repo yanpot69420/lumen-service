@@ -107,6 +107,7 @@ export function NotaPrintPage() {
 
   let waText = "";
   let waPhoneNum = "";
+  const jasaTambahan = ticket ? ticketJasa(ticket) : 0;
   if (ticket) {
     waPhoneNum = ticket.phone;
     waText = [
@@ -116,6 +117,7 @@ export function NotaPrintPage() {
       `Unit: ${ticket.brand} ${ticket.model}`,
       `Keluhan: ${ticket.keluhan}`,
       `Status: ${TICKET_STATUS_LABEL[ticket.status]}`,
+      jasaTambahan > 0 ? `Biaya jasa tambahan: ${rp(jasaTambahan)}` : "",
       ...ticket.partsUsed.map(
         (p) => `${p.qty}× ${p.nama}: ${rp(p.harga * p.qty)}`,
       ),
@@ -181,10 +183,7 @@ export function NotaPrintPage() {
               <p>Kelengkapan: {ticket.kelengkapan.join(", ")}</p>
             )}
             <Line />
-            <NotaRow
-              l={(ticket.hargaFinal ?? ticket.biayaJasa > 0) ? "Biaya jasa" : "Estimasi"}
-              r={rp(ticketJasa(ticket))}
-            />
+            {jasaTambahan > 0 && <NotaRow l="Biaya jasa tambahan" r={rp(jasaTambahan)} />}
             {ticket.partsUsed.map((p, i) => (
               <div key={i} className="my-1 min-w-0 break-inside-avoid">
                 <p>{p.nama}</p>
