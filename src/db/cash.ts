@@ -65,13 +65,36 @@ export async function closeCash(user: User, counted: number, note: string, displ
     await logAudit(actor, "tutup-kas", "kas", key, `Sistem ${expected}, fisik ${counted}, selisih ${counted - expected}`);
   });
 }
-function validateUnitCorrection(entry: CashEntry, after: { voided: 0 | 1 }) {
+async function validateUnitCorrection(entry: CashEntry, after: { amount: number; voided: 0 | 1 }) {
+  if (entry.locked || await db.dayCloses.get(entry.dayKey)) throw new Error("Kas tanggal transaksi sudah ditutup. Koreksi tidak dapat diterapkan; lakukan rekonsiliasi pada periode yang masih terbuka.");
   if (entry.category === "restok_part" && (entry.meta?.purchase || entry.meta?.purchaseRefundFor)) throw new Error("Gunakan Koreksi Pembelian agar stok, modal, dan kas diperbarui bersama");
   if (entry.category === "jual_unit" && after.voided) throw new Error("Pembatalan penjualan unit harus melalui Retur Unit");
   if (entry.category === "retur_unit" && after.voided) throw new Error("Jurnal retur unit tidak dapat dibatalkan karena unit sudah kembali ke stok. Koreksi nominal refund bila diperlukan.");
+  if (entry.category === "beli_unit") {
+    if (after.voided || entry.voided) throw new Error("Pembelian unit tidak dapat dibatalkan melalui kas. Rekonsiliasi unit dan pembayaran diperlukan.");
+    if (after.amount !== entry.amount) {
+      const unit = entry.refType === "unit" && entry.refId ? await db.units.get(entry.refId) : undefined;
+      const history = entry.refId ? await db.cash.where("refId").equals(entry.refId).and((row) => row.category === "jual_unit" || row.category === "retur_unit").count() : 0;
+      const purchases = entry.refId ? await db.cash.where("refId").equals(entry.refId).and((row) => row.category === "beli_unit").count() : 0;
+      if (!unit || unit.status !== "stok" || unit.soldAt !== undefined || history || purchases !== 1 || after.amount <= 0) throw new Error("Modal unit yang sudah pernah terjual/retur atau sumber pembeliannya tidak lengkap memerlukan rekonsiliasi.");
+    }
+  }
+  if (entry.category === "jual_aksesoris" && after.voided !== entry.voided) {
+    if (entry.voided) throw new Error("Penjualan yang sudah dibatalkan tidak dapat diaktifkan kembali. Buat penjualan baru agar stok diperiksa ulang.");
+    const part = entry.refType === "part" && entry.refId ? await db.parts.get(entry.refId) : undefined;
+    if (!part || !Number.isSafeInteger(entry.meta?.qty) || (entry.meta?.qty ?? 0) <= 0 || !Number.isSafeInteger(entry.meta?.modal) || (entry.meta?.modal ?? -1) < 0) throw new Error("Pembatalan memerlukan stok, jumlah, dan modal barang yang valid. Rekonsiliasi transaksi lama diperlukan.");
+  }
 }
 async function applyCorrection(entry: CashEntry, after: { amount: number; note: string; voided: 0 | 1; }) {
-  validateUnitCorrection(entry, after);
+  await validateUnitCorrection(entry, after);
+  if (entry.category === "beli_unit" && after.amount !== entry.amount) await db.units.update(entry.refId!, { hargaBeli: after.amount });
+  if (entry.category === "jual_aksesoris" && !entry.voided && after.voided) {
+    const part = (await db.parts.get(entry.refId!))!;
+    const stok = part.stok + entry.meta!.qty!;
+    const inventoryCost = part.stok * part.hargaModal + entry.meta!.modal!;
+    amount(stok, "Stok"); amount(inventoryCost, "Nilai modal stok");
+    await db.parts.update(part.id, { stok, hargaModal: Math.round(inventoryCost / stok) });
+  }
   const wasDp = entry.category === "servis" && entry.type === "in" && (entry.meta?.paymentKind ? entry.meta.paymentKind === "dp" : entry.note.startsWith("DP servis "));
   await db.cash.update(entry.id, { ...after, ...(wasDp ? { meta: { ...entry.meta, paymentKind: "dp" } } : {}) });
   if (entry.refType === "ticket" && entry.refId) {
@@ -95,7 +118,7 @@ export async function requestCorrection(user: User, id: string, after: { amount:
     const entry = await db.cash.get(id); if (!entry) throw new Error("Transaksi tidak ditemukan");
     if (displayed && (entry.amount !== displayed.amount || entry.note !== displayed.note || entry.voided !== displayed.voided)) throw new Error("Transaksi sudah berubah. Buka kembali koreksi dan periksa nilai terbaru.");
     if (actor.role === "kasir" && entry.by !== actor.id) throw new Error("Koreksi hanya untuk transaksi Anda sendiri");
-    validateUnitCorrection(entry, after);
+    await validateUnitCorrection(entry, after);
     if (await db.corrections.where("status").equals("pending").and((c) => c.entityId === id).count()) throw new Error("Sudah ada koreksi yang menunggu");
     const approved = actor.role === "owner";
     await db.corrections.add({ id: uid(), at: Date.now(), entity: "cash", entityId: id, reason: reason.trim(), before: { amount: entry.amount, note: entry.note, voided: entry.voided }, after, requestedBy: actor.id, requestedByName: actor.name, status: approved ? "approved" : "pending", ...(approved ? { decidedBy: actor.id, decidedByName: actor.name, decidedAt: Date.now() } : {}) });

@@ -1,12 +1,15 @@
 import { cloudSignOut, forgetOfflineLogin, offlineSessionValid } from "@/db/cloud";
 import { db } from "@/db/db";
 import { isCloud, supabase } from "@/db/supabase";
+import { startSync, stopSync } from "@/db/sync";
 import type { User } from "@/db/types";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   createContext,
+  Fragment,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -48,6 +51,30 @@ export function SessionProvider({ children }: { children: ReactNode; }) {
   }, []);
   const user =
     (userId && users?.find((u) => u.id === userId && u.active)) || null;
+
+  // The authenticated session owns sync, including standalone receipt routes.
+  useLayoutEffect(() => {
+    if (!ready || !user) return;
+    startSync(user.id);
+    return () => stopSync();
+  }, [ready, user?.id, user?.role]);
+
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if (event.key !== SESSION_KEY) return;
+      stopSync();
+      // Never keep another account's mounted forms/modal state in this tab.
+      setUserId(null);
+      if (!event.newValue) return;
+      if (!isCloud) { setUserId(event.newValue); return; }
+      const candidate = event.newValue;
+      void supabase!.auth.getSession().then(({ data }) => {
+        if (localStorage.getItem(SESSION_KEY) === candidate && data.session?.user.email === `${candidate}@lumen.local`) setUserId(candidate);
+      });
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }, []);
 
   useEffect(() => {
     if (ready && userId && !user) {
@@ -111,6 +138,7 @@ export function SessionProvider({ children }: { children: ReactNode; }) {
   }
 
   async function endSession(keepOffline: boolean) {
+    stopSync();
     localStorage.removeItem(SESSION_KEY); setUserId(null);
     if (isCloud) {
       if (!keepOffline) await forgetOfflineLogin();
@@ -130,7 +158,7 @@ export function SessionProvider({ children }: { children: ReactNode; }) {
         logout,
       }}
     >
-      {children}
+      <Fragment key={`${user?.id ?? "signed-out"}:${user?.role ?? ""}`}>{children}</Fragment>
     </Ctx.Provider>
   );
 }

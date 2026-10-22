@@ -7,6 +7,7 @@ import { PageBody, PageHeader } from "@/components/layout/app-shell";
 import { TicketStatusTag } from "@/components/ui/status-tag";
 import { sumCash } from "@/db/cash";
 import { db } from "@/db/db";
+import { readCorrectionsFor } from "@/db/access";
 import { ticketTotal } from "@/db/tickets";
 import type { Ticket } from "@/db/types";
 import { dayKey, daysSince, fmtDate, fmtTime, rp } from "@/lib/format";
@@ -40,8 +41,8 @@ export function BerandaPage() {
   const units = useLiveQuery(() => db.units.where("status").equals("stok").toArray(), []);
   const parts = useLiveQuery(() => db.parts.toArray(), []);
   const pendingKoreksi = useLiveQuery(
-    () => db.corrections.where("status").equals("pending").count(),
-    [],
+    async () => (await readCorrectionsFor(user)).filter((row) => row.status === "pending").length,
+    [user.id, user.role],
   );
 
   const { masuk, keluar } = sumCash(todayCash ?? []);

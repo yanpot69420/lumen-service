@@ -5,17 +5,22 @@ import { db, uid } from "./db";
 import { amount, operation } from "./operations";
 import type { CashMethod, Part, User } from "./types";
 
-export async function savePart(user: User, data: Omit<Part, "id">, id?: string) {
+export type PartCatalogSnapshot = Pick<Part, "nama" | "brand" | "kategori" | "hargaJual" | "minStok">;
+export interface SavePartOptions { displayed?: PartCatalogSnapshot; initialPaymentMethod?: CashMethod; }
+export async function savePart(user: User, data: Omit<Part, "id">, id?: string, options: SavePartOptions = {}) {
   return operation(user, "stock", async (actor) => {
     for (const n of [data.stok, data.hargaModal, data.hargaJual, data.minStok]) amount(n);
     if (!data.nama.trim()) throw new Error("Nama item wajib diisi");
     const key = id ?? uid();
     const current = id ? await db.parts.get(id) : undefined;
     if (id && !current) throw new Error("Item tidak ditemukan");
+    if (current && (!options.displayed || (["nama", "brand", "kategori", "hargaJual", "minStok"] as const).some((field) => current[field] !== options.displayed![field]))) throw new Error("Data item sudah berubah. Buka kembali form dan periksa nama serta harga terbaru.");
+    const method = options.initialPaymentMethod ?? "tunai";
+    if (!["tunai", "qris", "transfer"].includes(method)) throw new Error("Metode pembayaran tidak valid");
     const brand = data.brand === undefined ? current?.brand : normalizePartBrand(data.brand);
     if (data.brand !== undefined && !brand) throw new Error("Pilih merek HP yang valid");
     await db.parts.put({ ...data, brand, nama: data.nama.trim(), id: key, ...(current ? { stok: current.stok, hargaModal: current.hargaModal, _version: current._version } : {}) });
-    if (!current && data.stok * data.hargaModal > 0) await addCash(actor, { type: "out", category: "restok_part", amount: data.stok * data.hargaModal, note: `Stok awal ${data.nama}`, refType: "part", refId: key, meta: { purchase: { qty: data.stok, stockBefore: 0, costBefore: 0, stockAfter: data.stok, costAfter: data.hargaModal, totalCost: data.stok * data.hargaModal, partVersion: 1 } } });
+    if (!current && data.stok * data.hargaModal > 0) await addCash(actor, { type: "out", category: "restok_part", amount: data.stok * data.hargaModal, method, note: `Stok awal ${data.nama}`, refType: "part", refId: key, meta: { purchase: { qty: data.stok, stockBefore: 0, costBefore: 0, stockAfter: data.stok, costAfter: data.hargaModal, totalCost: data.stok * data.hargaModal, partVersion: 1 } } });
     await logAudit(actor, current ? "ubah" : "buat", "part", key, `${current ? "Ubah" : "Stok awal"} ${data.nama}`);
     return key;
   });

@@ -234,6 +234,7 @@ function PartTab() {
   const [restokPart, setRestokPart] = useState<Part | null>(null);
   const [adjustPart, setAdjustPart] = useState<Part | null>(null);
   const [purchasePart, setPurchasePart] = useState<Part | null>(null);
+  const [initialPaymentMethod, setInitialPaymentMethod] = useState<CashMethod>("tunai");
   const [f, setF] = useState({
     nama: "",
     brand: "",
@@ -279,6 +280,7 @@ function PartTab() {
 
   function openNew() {
     setEditing(null);
+    setInitialPaymentMethod("tunai");
     setF({ nama: "", brand: brandFilter !== "semua" ? brandFilter : "", kategori: "sparepart", stok: 0, hargaModal: 0, hargaJual: 0, minStok: 1 });
     setFormOpen(true);
   }
@@ -293,7 +295,7 @@ function PartTab() {
     if (!f.nama.trim() || !f.brand || busy) return;
     setBusy(true);
     try {
-      await savePart(user, f, editing?.id);
+      await savePart(user, f, editing?.id, { displayed: editing ?? undefined, initialPaymentMethod });
       toast("Tersimpan");
       setFormOpen(false);
     } finally {
@@ -455,6 +457,7 @@ function PartTab() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title={editing ? "Ubah Item" : "Tambah Item"}
+        busy={busy}
       >
         <div className="space-y-4">
           <Field label="Nama item" required hint="Nama panjang ditampilkan dalam beberapa baris agar mudah diedit.">
@@ -505,6 +508,9 @@ function PartTab() {
               <RpInput value={f.hargaJual} onChange={(n) => setF({ ...f, hargaJual: n })} />
             </Field>
           </div>
+          {!editing && f.stok > 0 && f.hargaModal > 0 && <Field label="Pembelian stok awal dibayar via" hint="Tunai mengurangi uang di laci. QRIS dan transfer dicatat terpisah.">
+            <MethodPicker value={initialPaymentMethod} onChange={setInitialPaymentMethod} />
+          </Field>}
           {editing && (
             <div className="flex gap-2">
               <Button

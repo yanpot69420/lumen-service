@@ -1,9 +1,9 @@
 import { canSeeMoney } from "@/auth/roles";
 import { useSession, useUser } from "@/auth/session";
 import { BrandMark } from "@/components/brand";
-import { db } from "@/db/db";
+import { readCorrectionsFor } from "@/db/access";
 import { isCloud } from "@/db/supabase";
-import { startSync, stopSync, syncNow, useSyncStatus } from "@/db/sync";
+import { syncNow, useSyncStatus } from "@/db/sync";
 import { cn } from "@/lib/cn";
 import { BRAND_NAME } from "@/lib/brand";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -26,7 +26,7 @@ import {
   Wallet,
   Wrench,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 
 export function SyncPill({ light = false }: { light?: boolean; }) {
@@ -40,14 +40,17 @@ export function SyncPill({ light = false }: { light?: boolean; }) {
     offline: { icon: CloudOff, text: "Offline", cls: "text-slate-400" },
   } as const;
   const m = map[s.state];
-  const Icon = m.icon;
-  const tone = light ? ({ off: "text-slate-500", idle: "text-brand-700", syncing: "text-accent-700", error: "text-accent-700", offline: "text-slate-500" } as const)[s.state] : m.cls;
+  const waiting = s.state === "idle" && s.pending > 0;
+  const Icon = waiting ? Cloud : m.icon;
+  const tone = waiting ? (light ? "text-accent-700" : "text-accent-400") : light ? ({ off: "text-slate-500", idle: "text-brand-700", syncing: "text-accent-700", error: "text-accent-700", offline: "text-slate-500" } as const)[s.state] : m.cls;
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5 px-2 text-[11px] font-medium", light ? "text-slate-500" : "text-slate-400")} role="status">
       <Icon className={cn("size-3.5", tone, s.state === "syncing" && "animate-spin")} />
-      <span className={tone}>{m.text}</span>
+      <span className={tone}>{waiting ? s.blocked > 0 ? "Antrean tertahan" : "Menunggu pengiriman" : m.text}</span>
       {s.error && <span className={cn("w-full break-words", light ? "text-accent-700" : "text-accent-400")}>{s.error}</span>}
       {s.state === "error" && <><button onClick={() => { void syncNow(); }} className="underline">Coba lagi</button><NavLink to="/app/pengaturan" className="underline">Simpan backup</NavLink></>}
+      {s.blocked > 0 && <span className="w-full">{s.blocked} perubahan menunggu akun pembuat atau transaksi sebelumnya.</span>}
+      {(s.pending > 0 || s.state === "error") && <NavLink to="/app/sinkronisasi" className="underline">Rincian sinkronisasi</NavLink>}
       {s.pending > 0 && (
         <span className={cn("ml-auto rounded-full px-1.5 text-[10px]", light ? "bg-brand-100 text-brand-700" : "bg-white/10")}>
           {s.pending} antre
@@ -96,15 +99,9 @@ export function AppShell() {
     return () => { scrollPositions.current.set(routeKey, window.scrollY); };
   }, [pathname, routeKey, navigationType]);
   const pendingCorrections = useLiveQuery(
-    () => db.corrections.where("status").equals("pending").count(),
-    [],
+    async () => (await readCorrectionsFor(user)).filter((row) => row.status === "pending").length,
+    [user.id, user.role],
   );
-
-  // Jalankan mesin sinkronisasi cloud selama sesi berlangsung.
-  useEffect(() => {
-    startSync();
-    return () => stopSync();
-  }, []);
 
   const navItem = (
     to: string,

@@ -5,7 +5,7 @@ import { EmptyState, Row } from "@/components/ui/misc";
 import { Tag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
 import { decideCorrection } from "@/db/cash";
-import { db } from "@/db/db";
+import { readCorrectionsFor } from "@/db/access";
 import type { Correction } from "@/db/types";
 import { fmtDateTime, rp } from "@/lib/format";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -15,8 +15,8 @@ export function KoreksiPage() {
   const user = useUser();
   const toast = useToast();
   const corrections = useLiveQuery(
-    () => db.corrections.orderBy("at").reverse().toArray(),
-    [],
+    () => readCorrectionsFor(user),
+    [user.id, user.role],
   );
   const isOwner = user.role === "owner";
 

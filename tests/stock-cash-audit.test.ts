@@ -43,7 +43,7 @@ test("physical stock adjustment changes quantities without inventing cash paymen
 
 test("catalog edits preserve the recorded cost and historical purchase payments", async () => {
   const id = await savePart(ho, part);
-  await savePart(ho, { ...part, hargaModal: 90_000 }, id);
+  await savePart(ho, { ...part, hargaModal: 90_000 }, id, { displayed: (await db.parts.get(id))! });
   expect((await db.parts.get(id))?.hargaModal).toBe(70_000);
   expect(sumCash(await db.cash.toArray()).keluar).toBe(350_000);
 });

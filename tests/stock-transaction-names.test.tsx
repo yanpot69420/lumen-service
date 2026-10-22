@@ -22,7 +22,7 @@ test("renaming an item updates purchase and sale display without rewriting their
   await sellPart(ho, { partId: id, qty: 1, harga: 100_000, method: "tunai" });
   const before = (await db.parts.get(id))!;
   const journal = await db.cash.toArray();
-  await savePart(ho, { ...before, nama: "LCD Samsung A15 OLED" }, id);
+  await savePart(ho, { ...before, nama: "LCD Samsung A15 OLED" }, id, { displayed: before });
   const renamed = (await db.parts.get(id))!;
   expect(renamed).toMatchObject({ stok: before.stok, hargaModal: before.hargaModal });
   expect(await db.cash.toArray()).toEqual(journal);

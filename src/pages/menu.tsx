@@ -1,7 +1,7 @@
 import { canSeeMoney } from "@/auth/roles";
 import { useSession, useUser } from "@/auth/session";
 import { PageBody, PageHeader, ROLE_LABEL } from "@/components/layout/app-shell";
-import { db } from "@/db/db";
+import { readCorrectionsFor } from "@/db/access";
 import { BRAND_NAME } from "@/lib/brand";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
   ChevronRight,
   ClipboardCheck,
+  Cloud,
   Globe,
   LogOut,
   ScrollText,
@@ -23,8 +24,8 @@ export function MenuPage() {
   const { logout } = useSession();
   const nav = useNavigate();
   const pending = useLiveQuery(
-    () => db.corrections.where("status").equals("pending").count(),
-    [],
+    async () => (await readCorrectionsFor(user)).filter((row) => row.status === "pending").length,
+    [user.id, user.role],
   );
 
   const mobileGroups = [
@@ -42,6 +43,7 @@ export function MenuPage() {
       label: "Pengelolaan",
       items: [
         { to: "/app/koreksi", label: "Jurnal koreksi", hint: "Permintaan perbaikan transaksi", icon: ClipboardCheck, badge: pending },
+        { to: "/app/sinkronisasi", label: "Pusat sinkronisasi", hint: "Status pengiriman dan akun pembuat", icon: Cloud, badge: undefined },
         ...(user.role === "owner" ? [{ to: "/app/audit", label: "Audit log", hint: "Jejak aktivitas tim", icon: ScrollText, badge: undefined }] : []),
         { to: "/app/pengaturan", label: "Pengaturan", hint: "Akun, toko, dan penyimpanan", icon: Settings, badge: undefined },
         { to: "/", label: "Web publik", hint: "Buka halaman pelanggan", icon: Globe, badge: undefined },

@@ -86,7 +86,7 @@ export function UnitDetailPage() {
             )}
             <div className="mt-3 border-t border-slate-100 pt-2">
               <Row label="Dibeli">{`${fmtDate(unit.boughtAt)} (${daysSince(unit.boughtAt)} hari lalu)`}</Row>
-              <Row label="Penjual">{unit.sellerName}{unit.sellerPhone ? ` · ${unit.sellerPhone}` : ""}</Row>
+              {money && <Row label="Penjual">{unit.sellerName}{unit.sellerPhone ? ` · ${unit.sellerPhone}` : ""}</Row>}
               {money && <Row label="Harga beli (modal)">{rp(unit.hargaBeli)}</Row>}
               {!sold && (
                 <Row label="Harga jual" strong>
@@ -113,8 +113,8 @@ export function UnitDetailPage() {
                   <Row label="Harga jual" strong>{rp(unit.soldPrice!)}</Row>
                   {money && (
                     <Row label="Margin" strong>
-                      <span className="text-brand-600">
-                        +{rp((unit.soldPrice ?? 0) - unit.hargaBeli)}
+                      <span className={(unit.soldPrice ?? 0) < unit.hargaBeli ? "text-red-600" : "text-brand-600"}>
+                        {(unit.soldPrice ?? 0) >= unit.hargaBeli ? "+" : "−"}{rp(Math.abs((unit.soldPrice ?? 0) - unit.hargaBeli))}
                       </span>
                     </Row>
                   )}
@@ -180,7 +180,7 @@ export function UnitDetailPage() {
       </PageBody>
 
       {/* Ubah harga jual */}
-      <Sheet open={priceOpen} onClose={() => setPriceOpen(false)} title="Ubah Harga Jual">
+      <Sheet open={priceOpen} onClose={() => setPriceOpen(false)} title="Ubah Harga Jual" busy={busy}>
         <div className="space-y-4">
           <Field label="Harga jual" hint="Tampil di katalog publik bila diisi.">
             <RpInput value={hargaJual} onChange={setHargaJual} />
@@ -195,6 +195,8 @@ export function UnitDetailPage() {
                 await setUnitPrice(user, unit.id, hargaJual);
                 toast("Harga jual diperbarui");
                 setPriceOpen(false);
+              } catch (error) {
+                toast(error instanceof Error ? error.message : "Gagal memperbarui harga", "error");
               } finally {
                 setBusy(false);
               }
@@ -206,7 +208,7 @@ export function UnitDetailPage() {
       </Sheet>
 
       {/* Jual */}
-      <Sheet open={sellOpen} onClose={() => setSellOpen(false)} title={`Jual ${unit.kode}`}>
+      <Sheet open={sellOpen} onClose={() => setSellOpen(false)} title={`Jual ${unit.kode}`} busy={busy}>
         <div className="space-y-4">
           <Field label="Harga jual final" required>
             <RpInput
@@ -251,8 +253,8 @@ export function UnitDetailPage() {
             <div className="rounded-xl bg-brand-50 p-4 text-sm">
               <Row label="Modal">{rp(unit.hargaBeli)}</Row>
               <Row label="Margin" strong>
-                <span className="text-brand-600">
-                  +{rp(Math.max(0, sale.soldPrice - unit.hargaBeli))}
+                <span className={sale.soldPrice < unit.hargaBeli ? "text-red-600" : "text-brand-600"}>
+                  {sale.soldPrice >= unit.hargaBeli ? "+" : "−"}{rp(Math.abs(sale.soldPrice - unit.hargaBeli))}
                 </span>
               </Row>
             </div>
@@ -268,6 +270,8 @@ export function UnitDetailPage() {
                 toast(`${unit.kode} terjual — ${rp(sale.soldPrice)}`);
                 setSellOpen(false);
                 nav(`/app/nota/unit/${unit.id}`);
+              } catch (error) {
+                toast(error instanceof Error ? error.message : "Gagal mencatat penjualan", "error");
               } finally {
                 setBusy(false);
               }
@@ -279,7 +283,7 @@ export function UnitDetailPage() {
       </Sheet>
 
       {/* Retur */}
-      <Sheet open={returOpen} onClose={() => setReturOpen(false)} title={`Retur ${unit.kode}`}>
+      <Sheet open={returOpen} onClose={() => setReturOpen(false)} title={`Retur ${unit.kode}`} busy={busy}>
         <div className="space-y-4">
           <div className="rounded-xl bg-slate-50 p-4 text-sm">
             <Row label="Dijual seharga">{rp(unit.soldPrice ?? 0)}</Row>
@@ -323,6 +327,8 @@ export function UnitDetailPage() {
                 await returUnit(user, unit, retur);
                 toast(`${unit.kode} kembali ke stok`);
                 setReturOpen(false);
+              } catch (error) {
+                toast(error instanceof Error ? error.message : "Gagal mencatat retur", "error");
               } finally {
                 setBusy(false);
               }
