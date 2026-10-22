@@ -171,7 +171,7 @@ export function KasPage() {
                 {e.type === "in" ? "+" : "−"}
                 {rp(e.amount)}
               </p>
-              {e.locked === 1 ? (
+              {e.locked === 1 || (e.category === "jual_aksesoris" && e.voided === 1) ? (
                 <Lock className="size-3.5 shrink-0 text-slate-300 lg:justify-self-center" />
               ) : (
                 <button
@@ -305,7 +305,7 @@ function TutupKasSheet({
   const selisih = counted - expected;
 
   return (
-    <Sheet open={open} onClose={onClose} title="Tutup Kas Hari Ini">
+    <Sheet open={open} onClose={onClose} title="Tutup Kas Hari Ini" busy={busy}>
       <div className="space-y-4">
         <div className="rounded-xl bg-slate-50 p-4 text-sm">
           <Row label="Tunai seharusnya (sistem)" strong>
@@ -353,7 +353,7 @@ function TutupKasSheet({
           Tutup Kas
         </Button>
         <p className="text-xs text-slate-400">
-          Setelah ditutup, transaksi hari ini terkunci dan hanya bisa diubah lewat jurnal koreksi.
+          Setelah ditutup, transaksi hari ini terkunci. Periksa koreksi yang tertunda sebelum menutup kas; rekonsiliasi berikutnya dicatat pada periode yang masih terbuka.
         </p>
       </div>
     </Sheet>
@@ -389,15 +389,16 @@ function KoreksiSheet({
 
   if (!entry) return null;
   const isOwner = user.role === "owner";
+  const canVoid = !["beli_unit", "jual_unit", "retur_unit"].includes(entry.category);
 
   return (
-    <Sheet open={!!entry} onClose={onClose} title="Ajukan Koreksi">
+    <Sheet open={!!entry} onClose={onClose} title="Ajukan Koreksi" busy={busy}>
       <div className="space-y-4">
         <div className="rounded-xl bg-slate-50 p-4 text-sm">
           <Row label="Transaksi"><CashDescription entry={entry} part={currentPart} /></Row>
           <Row label="Nominal sekarang" strong>{rp(entry.amount)}</Row>
         </div>
-        <label className="flex items-center gap-2 text-sm">
+        {canVoid ? <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={voidIt}
@@ -405,7 +406,8 @@ function KoreksiSheet({
             className="size-4 rounded"
           />
           Batalkan transaksi ini (void)
-        </label>
+        </label> : <p className="rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">{entry.category === "jual_unit" ? "Untuk membatalkan penjualan HP, gunakan Retur Unit pada detail unit." : entry.category === "beli_unit" ? "Pembatalan pembelian HP memerlukan rekonsiliasi bersama stok unit. Form ini hanya mengoreksi nominal atau keterangan." : "Jurnal retur dipertahankan karena barang sudah kembali ke stok. Nominal atau keterangan dapat dikoreksi."}</p>}
+        {canVoid && entry.category === "jual_aksesoris" && voidIt && <p className="rounded-xl bg-accent-50 p-3 text-xs leading-relaxed text-accent-900">Pembatalan akan mengembalikan jumlah dan modal barang ke stok bersama koreksi kas. Penjualan yang sudah dibatalkan tidak dapat diaktifkan ulang; buat penjualan baru bila diperlukan.</p>}
         {!voidIt && (
           <>
             <Field label="Nominal seharusnya">

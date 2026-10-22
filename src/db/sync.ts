@@ -4,10 +4,12 @@ import { db, markRemoteWrite, type OutboxEntry } from "./db";
 import { isCloud, supabase } from "./supabase";
 import { M } from "./sync-mappers";
 import { repairRoundedPurchaseBatch } from "./sync-purchase-repair";
+import { planSyncQueue, type BlockedSyncAccount, type QueuePlan } from "./sync-queue";
+export type { BlockedSyncAccount } from "./sync-queue";
 
 export type SyncState = "off" | "idle" | "syncing" | "error" | "offline";
-interface Status { state: SyncState; pending: number; lastSync: number; error?: string; }
-let status: Status = { state: "off", pending: 0, lastSync: 0 };
+interface Status { state: SyncState; pending: number; lastSync: number; error?: string; blocked: number; blockedAccounts: BlockedSyncAccount[]; }
+let status: Status = { state: "off", pending: 0, lastSync: 0, blocked: 0, blockedAccounts: [] };
 const listeners = new Set<() => void>();
 function setStatus(patch: Partial<Status>) { status = { ...status, ...patch }; listeners.forEach((fn) => fn()); }
 const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
@@ -29,7 +31,7 @@ export function coalesceChanges(entries: OutboxEntry[]) {
   return [...rows.values()];
 }
 
-export async function applyRemoteRows(name: string, remote: Record<string, unknown>[]) {
+export async function applyRemoteRows(name: string, remote: Record<string, unknown>[], assertCurrent = () => {}) {
   const records: Record<string, unknown>[] = [];
   for (const row of remote) {
     if (name === "photos" && !row.deleted) {
@@ -41,6 +43,7 @@ export async function applyRemoteRows(name: string, remote: Record<string, unkno
     } else records.push(row);
   }
   await db.transaction("rw", [db.table(name), db.outbox], async () => {
+    assertCurrent();
     markRemoteWrite();
     const pending = new Set((await db.outbox.where("table").equals(name).toArray()).map((r) => r.key));
     for (const record of records) {
@@ -53,16 +56,17 @@ export async function applyRemoteRows(name: string, remote: Record<string, unkno
   });
 }
 
-async function pullOne(name: string) {
+async function pullOne(name: string, assertCurrent = () => {}) {
   if (!supabase) return;
   let after: string | null = null;
   do {
     const result: { data: unknown; error: { message: string; } | null; } = await supabase.rpc("sync_page", { p_table: M[name].remote, p_after: after, p_limit: 200 });
+    assertCurrent();
     const data = result.data as { rows: Record<string, unknown>[]; next?: string | null; } | null;
     const error = result.error;
     if (error) throw cloudError(`Gagal mengambil ${name}: ${error.message}`);
     if (!data || !Array.isArray(data.rows)) throw new Error("Versi server belum cocok. Jalankan migrasi keamanan cloud.");
-    await applyRemoteRows(name, data.rows);
+    await applyRemoteRows(name, data.rows, assertCurrent);
     if (data.next && data.next === after) throw new Error("Cursor sinkronisasi tidak bergerak");
     after = data.next ?? null;
   } while (after);
@@ -71,23 +75,27 @@ export async function pullCore() { for (const name of ["users", "settings"]) awa
 
 /** Claim before copying work out of IndexedDB. This also serializes with Undo
  * in browsers without cross-tab Web Locks; a stale copy can never be sent. */
-export async function claimSyncBatch(): Promise<{ batch: OutboxEntry[]; retryAt?: number; }> {
-  return db.transaction("rw", [db.outbox, db.parts], async () => {
-    const first = await db.outbox.orderBy("seq").first();
-    if (!first) return { batch: [] };
+export async function claimSyncBatch(actorId?: string): Promise<QueuePlan> {
+  return db.transaction("rw", [db.outbox, db.parts, db.users], async () => {
+    const empty: QueuePlan = { batch: [], blocked: 0, blockedAccounts: [] };
+    const entries = await db.outbox.orderBy("seq").toArray();
+    const plan = actorId ? planSyncQueue(entries, actorId, new Map((await db.users.toArray()).map((user) => [user.id, user.name]))) : empty;
+    const first = actorId ? plan.batch[0] : entries[0];
+    if (!first) return plan;
     if (!first.batchId) throw new Error("Ada antrean dari versi lama. Unduh backup sebelum migrasi antrean; data lokal tetap disimpan.");
     const batch = await db.outbox.where("batchId").equals(first.batchId).sortBy("seq");
     const notBefore = Math.max(...batch.map((entry) => entry.notBefore ?? 0));
-    if (notBefore > Date.now()) return { batch: [], retryAt: notBefore };
+    if (notBefore > Date.now()) return { ...plan, batch: [], retryAt: notBefore };
     await repairRoundedPurchaseBatch(batch);
     for (const entry of batch) await db.outbox.update(entry.seq!, { inFlight: true });
-    return { batch };
+    return { ...plan, batch };
   });
 }
 
-async function pushBatch() {
+async function pushBatch(actorId: string, assertCurrent: () => void) {
   if (!supabase) return false;
-  const { batch, retryAt } = await claimSyncBatch();
+  const { batch, retryAt } = await claimSyncBatch(actorId);
+  assertCurrent();
   if (retryAt) scheduleSync(retryAt - Date.now());
   if (!batch.length) return false;
   const first = batch[0];
@@ -98,6 +106,8 @@ async function pushBatch() {
     if (e.table === "photos" && e.payload) {
       const photo = e.payload;
       const session = await supabase.auth.getSession();
+      assertCurrent();
+      if (session.data.session?.user.email !== `${actorId}@lumen.local`) throw new SyncSessionChanged();
       const path = `${session.data.session!.user.id}/${e.key}.jpg`;
       e.payload = { ...photo, remotePath: path };
       const { error } = await supabase.storage.from("photos").upload(path, photo.blob as Blob, { contentType: "image/jpeg", upsert: false });
@@ -105,7 +115,9 @@ async function pushBatch() {
     }
     changes.push({ table: M[e.table].remote, key: e.key, expected_version: e.before?._version ?? 0, row: e.payload ? M[e.table].toRemote(e.payload) : null });
   }
+  assertCurrent();
   const { data, error } = await supabase.rpc("apply_changes", { p_batch_id: first.batchId, p_changes: changes });
+  assertCurrent();
   if (error) throw cloudError(`Perubahan belum terkirim: ${error.message}`);
   await acknowledgeSyncBatch(batch, data);
   return true;
@@ -148,44 +160,90 @@ export async function acknowledgeSyncBatch(batch: OutboxEntry[], data: unknown):
 
 /** Older releases stored photos only on the device. Queue them without
  * replacing any pending work or claiming that they are already backed up. */
-export async function queueLegacyPhotos() {
-  await db.transaction("rw", [db.photos, db.outbox], async () => {
+export async function queueLegacyPhotos(actorId?: string) {
+  await db.transaction("rw", [db.photos, db.outbox, db.users], async () => {
+    const actor = actorId ? await db.users.get(actorId) : undefined;
     const pending = new Set((await db.outbox.where("table").equals("photos").toArray()).map((e) => e.key));
     for (const photo of await db.photos.toArray()) {
       if (photo.refType === "draft" || photo._version || pending.has(photo.id)) continue;
-      await db.outbox.add({ table: "photos", key: photo.id, at: Date.now(), batchId: crypto.randomUUID(), before: null, payload: { ...photo } });
+      if (actorId && (!actor?.active || (photo.refType === "unit-ktp" && actor.role !== "owner" && actor.role !== "headops"))) continue;
+      await db.outbox.add({ table: "photos", key: photo.id, at: Date.now(), batchId: crypto.randomUUID(), before: null, payload: { ...photo }, ...(actorId ? { actorId } : {}) });
     }
   });
 }
 
 let syncing = false;
 let started = false;
+let sessionGeneration = 0;
+let activeActorId: string | undefined;
+class SyncSessionChanged extends Error {}
+export async function inspectSyncQueue(actorId: string) {
+  const [entries, users] = await Promise.all([db.outbox.orderBy("seq").toArray(), db.users.toArray()]);
+  return { pending: entries.length, ...planSyncQueue(entries, actorId, new Map(users.map((user) => [user.id, user.name]))) };
+}
 async function tick() {
   if (syncing || !supabase) return;
   syncing = true;
+  const generation = sessionGeneration;
+  const actorId = activeActorId;
+  const assertCurrent = () => { if (generation !== sessionGeneration || !actorId || actorId !== activeActorId) throw new SyncSessionChanged(); };
   try {
-    setStatus({ pending: await db.outbox.count() });
+    if (!actorId) return;
+    const initial = await inspectSyncQueue(actorId);
+    assertCurrent();
+    setStatus({ pending: initial.pending, blocked: initial.blocked, blockedAccounts: initial.blockedAccounts });
     if (!navigator.onLine) { setStatus({ state: "offline" }); return; }
     const { data } = await supabase.auth.getSession();
+    assertCurrent();
     if (!data.session) { setStatus({ state: "off" }); return; }
+    if (data.session.user.email !== `${actorId}@lumen.local`) throw new SyncSessionChanged();
     setStatus({ state: "syncing", error: undefined });
-    await queueLegacyPhotos();
+    await queueLegacyPhotos(actorId);
     // One RPC per native transaction: cash, stock, ticket and audit commit together.
-    let guard = 0;
-    while (guard++ < 100 && await pushBatch()) { /* bounded work, never discard */ }
-    for (const name of ORDER) await pullOne(name);
-    const pending = await db.outbox.count();
-    setStatus({ state: pending ? "syncing" : "idle", pending, lastSync: Date.now() });
-    if (pending) scheduleSync();
+    let failure: unknown;
+    try {
+      let guard = 0;
+      while (guard++ < 100 && await pushBatch(actorId, assertCurrent)) { /* bounded work, never discard */ }
+    } catch (error) { assertCurrent(); failure = error; }
+    // A rejected or foreign journal must not prevent fresh authorized reads.
+    for (const name of ORDER) {
+      try { await pullOne(name, assertCurrent); }
+      catch (error) { assertCurrent(); failure ??= error; }
+    }
+    const queue = await inspectSyncQueue(actorId);
+    assertCurrent();
+    setStatus({ state: failure ? "error" : "idle", pending: queue.pending, blocked: queue.blocked, blockedAccounts: queue.blockedAccounts, ...(!failure ? { lastSync: Date.now() } : {}), error: failure instanceof Error ? failure.message : failure ? "Sinkronisasi gagal" : undefined });
+    if (queue.retryAt) scheduleSync(queue.retryAt - Date.now());
+    else if (!failure && queue.batch.length) scheduleSync();
   } catch (e) {
+    if (e instanceof SyncSessionChanged) return;
     setStatus({ state: "error", pending: await db.outbox.count(), error: e instanceof Error ? e.message : "Sinkronisasi gagal" });
-  } finally { syncing = false; }
+  } finally { syncing = false; if (generation !== sessionGeneration && started) scheduleSync(1); }
 }
 
+let running: Promise<void> | undefined;
 export async function syncNow() {
-  if (typeof navigator !== "undefined" && navigator.locks) {
-    await navigator.locks.request("lumen-cloud-sync", { ifAvailable: true }, async (lock) => { if (lock) await tick(); });
-  } else await tick();
+  if (running) return running;
+  running = (async () => {
+    if (typeof navigator !== "undefined" && navigator.locks) {
+      await navigator.locks.request("lumen-cloud-sync", { ifAvailable: true }, async (lock) => { if (lock) await tick(); });
+    } else await tick();
+  })();
+  try { await running; } finally { running = undefined; }
+}
+
+/** A direct receipt link may be opened on a freshly signed-in device. Fetch
+ * its table independently of queued writes and slow photo downloads. */
+export async function refreshReceiptData(type: "servis" | "unit", actorId: string) {
+  if (!supabase) return;
+  const generation = sessionGeneration;
+  const assertCurrent = () => { if (generation !== sessionGeneration || activeActorId !== actorId) throw new SyncSessionChanged(); };
+  const { data, error } = await supabase.auth.getSession();
+  assertCurrent();
+  if (error || data.session?.user.email !== `${actorId}@lumen.local`) throw new Error("Sesi cloud belum tersedia. Masuk kembali untuk mengambil nota.");
+  // Have store identity ready before publishing a previously uncached receipt.
+  await pullOne("settings", assertCurrent);
+  await pullOne(type === "servis" ? "tickets" : "units", assertCurrent);
 }
 let timer: ReturnType<typeof setTimeout> | null = null;
 let timerAt = 0;
@@ -200,18 +258,23 @@ export function scheduleSync(delayOrEvent: number | Event = 2000) {
   timerAt = deadline;
   timer = setTimeout(() => { timer = null; timerAt = 0; void syncNow(); }, Math.max(1, delay));
 }
-export function startSync() {
-  if (started || !isCloud) return;
+export function startSync(actorId: string) {
+  if (!isCloud || (started && activeActorId === actorId)) return;
+  if (started) stopSync();
   started = true;
+  activeActorId = actorId;
+  sessionGeneration++;
   observer = liveQuery(() => db.outbox.count()).subscribe(() => scheduleSync());
   interval = setInterval(scheduleSync, 30_000);
   window.addEventListener("focus", scheduleSync); window.addEventListener("online", scheduleSync);
-  scheduleSync();
+  scheduleSync(1);
 }
 export function stopSync() {
   started = false;
+  activeActorId = undefined;
+  sessionGeneration++;
   if (timer) clearTimeout(timer); if (interval) clearInterval(interval);
   timer = null; interval = null; observer?.unsubscribe(); observer = null;
   window.removeEventListener("focus", scheduleSync); window.removeEventListener("online", scheduleSync);
-  setStatus({ state: "off" });
+  setStatus({ state: "off", pending: 0, lastSync: 0, error: undefined, blocked: 0, blockedAccounts: [] });
 }

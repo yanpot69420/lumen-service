@@ -6,7 +6,7 @@ import { FirstPhoto } from "@/components/photos";
 import { PurchaseHistory } from "@/components/purchase-correction";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/dialog";
-import { Field, Input, RpInput, Select } from "@/components/ui/field";
+import { Field, Input, RpInput, Select, Textarea } from "@/components/ui/field";
 import { EmptyState } from "@/components/ui/misc";
 import { Sheet } from "@/components/ui/sheet";
 import { Tag, UnitStatusTag } from "@/components/ui/status-tag";
@@ -234,6 +234,7 @@ function PartTab() {
   const [restokPart, setRestokPart] = useState<Part | null>(null);
   const [adjustPart, setAdjustPart] = useState<Part | null>(null);
   const [purchasePart, setPurchasePart] = useState<Part | null>(null);
+  const [initialPaymentMethod, setInitialPaymentMethod] = useState<CashMethod>("tunai");
   const [f, setF] = useState({
     nama: "",
     brand: "",
@@ -279,6 +280,7 @@ function PartTab() {
 
   function openNew() {
     setEditing(null);
+    setInitialPaymentMethod("tunai");
     setF({ nama: "", brand: brandFilter !== "semua" ? brandFilter : "", kategori: "sparepart", stok: 0, hargaModal: 0, hargaJual: 0, minStok: 1 });
     setFormOpen(true);
   }
@@ -293,7 +295,7 @@ function PartTab() {
     if (!f.nama.trim() || !f.brand || busy) return;
     setBusy(true);
     try {
-      await savePart(user, f, editing?.id);
+      await savePart(user, f, editing?.id, { displayed: editing ?? undefined, initialPaymentMethod });
       toast("Tersimpan");
       setFormOpen(false);
     } finally {
@@ -399,7 +401,7 @@ function PartTab() {
           )}
         >
           <div className="min-w-0 flex-1">
-            <p title={p.nama} className="line-clamp-2 whitespace-normal break-words text-base font-semibold leading-snug lg:text-sm lg:text-brand-950">{p.nama}</p>
+            <p title={p.nama} className="line-clamp-2 whitespace-normal text-base font-semibold leading-snug [overflow-wrap:anywhere] lg:text-sm lg:text-brand-950">{p.nama}</p>
             <p className="mt-2 text-xs text-slate-400 lg:mt-1.5"><span className="mr-1 inline-flex rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-600 lg:hidden">{getPartBrand(p)}</span> <span className="capitalize">{p.kategori}</span></p>
             {money && <p className="mt-2 text-xs tabular-nums text-slate-500 lg:hidden">Harga beli {rp(p.hargaModal)} / pcs</p>}
           </div>
@@ -455,10 +457,14 @@ function PartTab() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title={editing ? "Ubah Item" : "Tambah Item"}
+        busy={busy}
       >
         <div className="space-y-4">
-          <Field label="Nama item" required>
-            <Input
+          <Field label="Nama item" required hint="Nama panjang ditampilkan dalam beberapa baris agar mudah diedit.">
+            <Textarea
+              rows={4}
+              wrap="soft"
+              className="resize-y"
               value={f.nama}
               onChange={(e) => setF({ ...f, nama: e.target.value })}
               placeholder="LCD Redmi Note 12 / Softcase bening…"
@@ -502,6 +508,9 @@ function PartTab() {
               <RpInput value={f.hargaJual} onChange={(n) => setF({ ...f, hargaJual: n })} />
             </Field>
           </div>
+          {!editing && f.stok > 0 && f.hargaModal > 0 && <Field label="Pembelian stok awal dibayar via" hint="Tunai mengurangi uang di laci. QRIS dan transfer dicatat terpisah.">
+            <MethodPicker value={initialPaymentMethod} onChange={setInitialPaymentMethod} />
+          </Field>}
           {editing && (
             <div className="flex gap-2">
               <Button
@@ -557,6 +566,7 @@ function PartTab() {
               ))}
             </Select>
           </Field>
+          {selPart && <p className="rounded-xl bg-slate-50 p-3 text-sm [overflow-wrap:anywhere]">{selPart.nama}</p>}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Jumlah">
               <Input
@@ -621,8 +631,9 @@ function RestokSheet({ part, onClose }: { part: Part | null; onClose: () => void
   if (!part) return null;
 
   return (
-    <Sheet open onClose={onClose} title={`Restok — ${part.nama}`}>
+    <Sheet open onClose={onClose} title="Restok Sparepart">
       <div className="space-y-4">
+        <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold [overflow-wrap:anywhere]">{part.nama}</p>
         <Field label="Jumlah masuk" required>
           <Input
             inputMode="numeric"
@@ -682,8 +693,9 @@ function AdjustSheet({ part, onClose }: { part: Part | null; onClose: () => void
   if (!part) return null;
 
   return (
-    <Sheet open onClose={onClose} title={`Penyesuaian Stok — ${part.nama}`}>
+    <Sheet open onClose={onClose} title="Penyesuaian Stok">
       <div className="space-y-4">
+        <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold [overflow-wrap:anywhere]">{part.nama}</p>
         <p className="rounded-xl bg-accent-50 p-3 text-xs leading-relaxed text-accent-900">Untuk hasil hitung fisik atau barang rusak. Penyesuaian tidak mengubah kas. Jika jumlah atau harga pembelian salah input, gunakan Koreksi Pembelian.</p>
         <Field label="Stok hasil hitung fisik" required>
           <RpInput value={stok} onChange={setStok} />

@@ -68,11 +68,11 @@ export function Row({
   strong?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className={cn("text-right", strong && "font-semibold")}>
+    <div className="flex min-w-0 items-start justify-between gap-3 py-1.5 text-sm">
+      <span className="min-w-0 flex-1 text-slate-500 [overflow-wrap:anywhere]">{label}</span>
+      <div className={cn("min-w-0 max-w-[60%] text-right [overflow-wrap:anywhere]", strong && "font-semibold")}>
         {children}
-      </span>
+      </div>
     </div>
   );
 }

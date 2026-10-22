@@ -28,6 +28,8 @@ export interface OutboxEntry {
   /** Keep the whole transaction local while its snackbar offers Undo. */
   notBefore?: number;
   inFlight?: boolean;
+  /** Staff who performed this transaction; never reassigned during handover. */
+  actorId?: string;
 }
 
 export interface UndoChange {
@@ -55,7 +57,21 @@ export interface UndoCapture {
 
 export const SYNC_TABLES = ["settings", "customers", "parts", "units", "tickets", "cash", "dayCloses", "corrections", "audit", "photos"];
 export const isSharedSetting = (key: string) => /^(storeName|storeTagline|storeAddress|storePhone|storeHours|notaFooter|waTemplates)$/.test(key);
-type SyncTransaction = Transaction & { remoteWrite?: boolean; undoCapture?: UndoCapture; };
+type SyncTransaction = Transaction & { remoteWrite?: boolean; undoCapture?: UndoCapture; actorId?: string; };
+
+export function setTransactionActor(actorId: string) {
+  const tx = Dexie.currentTransaction as SyncTransaction | null;
+  if (!tx) throw new Error("Identitas tindakan harus di dalam transaksi");
+  tx.actorId = actorId;
+}
+function transactionActor() {
+  let tx = Dexie.currentTransaction as SyncTransaction | null;
+  while (tx) {
+    if (tx.actorId) return tx.actorId;
+    tx = tx.parent as SyncTransaction | null;
+  }
+  return undefined;
+}
 
 export function currentUndoCapture() {
   let tx = Dexie.currentTransaction as SyncTransaction | null;
@@ -182,7 +198,7 @@ export class LumenDB extends Dexie {
                 if (result.failures[i] || key == null) return [];
                 if (name === "settings" && !isSharedSetting(String(key))) return [];
                 if (name === "photos" && (after[i] ?? before[i])?.refType === "draft") return [];
-                return [{ table: name, key: String(key), batchId, at: Date.now(), before: before[i] ?? null, payload: after[i] ?? null, ...(capture ? { notBefore: Number.MAX_SAFE_INTEGER } : {}) }];
+                return [{ table: name, key: String(key), batchId, at: Date.now(), before: before[i] ?? null, payload: after[i] ?? null, ...(transactionActor() ? { actorId: transactionActor() } : {}), ...(capture ? { notBefore: Number.MAX_SAFE_INTEGER } : {}) }];
               });
               if (entries.length) {
                 const queued = await down.table("outbox").mutate({ type: "add", trans: req.trans, values: entries });

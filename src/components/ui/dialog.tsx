@@ -37,19 +37,19 @@ export function Modal({
         aria-busy={busy}
         className="ui-modal relative flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 id={titleId} className="text-base font-semibold">{title}</h2>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <h2 id={titleId} className="min-w-0 flex-1 text-base font-semibold [overflow-wrap:anywhere]">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             disabled={busy}
             aria-label="Tutup"
-            className="flex size-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 lg:size-8"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 lg:size-8"
           >
             <X className="size-5" />
           </button>
         </div>
-        <div className="min-h-0 overflow-y-auto p-5">
+        <div className="min-h-0 min-w-0 overflow-y-auto p-5">
           <fieldset disabled={busy} className="min-w-0">{children}</fieldset>
         </div>
       </div>

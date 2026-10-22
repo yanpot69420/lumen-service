@@ -45,6 +45,7 @@ const KoreksiPage = lazy(() => import("@/pages/koreksi").then((m) => ({ default:
 const AuditPage = lazy(() => import("@/pages/audit").then((m) => ({ default: m.AuditPage })));
 const PengaturanPage = lazy(() => import("@/pages/pengaturan").then((m) => ({ default: m.PengaturanPage })));
 const MenuPage = lazy(() => import("@/pages/menu").then((m) => ({ default: m.MenuPage })));
+const SinkronisasiPage = lazy(() => import("@/pages/sinkronisasi").then((m) => ({ default: m.SinkronisasiPage })));
 const PelangganListPage = lazy(() => import("@/pages/pelanggan/list").then((m) => ({ default: m.PelangganListPage })));
 const PelangganDetailPage = lazy(() => import("@/pages/pelanggan/detail").then((m) => ({ default: m.PelangganDetailPage })));
 
@@ -99,6 +100,7 @@ export default function App() {
                     />
                     <Route path="pengaturan" element={<PengaturanPage />} />
                     <Route path="menu" element={<MenuPage />} />
+                    <Route path="sinkronisasi" element={<SinkronisasiPage />} />
                   </Route>
 
                   {/* Nota print (tanpa shell agar bersih saat dicetak) */}

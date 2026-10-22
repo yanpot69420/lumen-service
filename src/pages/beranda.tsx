@@ -7,6 +7,7 @@ import { PageBody, PageHeader } from "@/components/layout/app-shell";
 import { TicketStatusTag } from "@/components/ui/status-tag";
 import { sumCash } from "@/db/cash";
 import { db } from "@/db/db";
+import { readCorrectionsFor } from "@/db/access";
 import { ticketTotal } from "@/db/tickets";
 import type { Ticket } from "@/db/types";
 import { dayKey, daysSince, fmtDate, fmtTime, rp } from "@/lib/format";
@@ -40,8 +41,8 @@ export function BerandaPage() {
   const units = useLiveQuery(() => db.units.where("status").equals("stok").toArray(), []);
   const parts = useLiveQuery(() => db.parts.toArray(), []);
   const pendingKoreksi = useLiveQuery(
-    () => db.corrections.where("status").equals("pending").count(),
-    [],
+    async () => (await readCorrectionsFor(user)).filter((row) => row.status === "pending").length,
+    [user.id, user.role],
   );
 
   const { masuk, keluar } = sumCash(todayCash ?? []);
@@ -275,7 +276,7 @@ function DesktopTicket({ ticket, money }: { ticket: Ticket; money: boolean }) {
 function DesktopReminder({ to, icon, title, hint }: { to: string; icon: ReactNode; title: string; hint: string }) {
   return <Link to={to} className="group flex items-start gap-2.5 border-b border-slate-100 py-3.5 last:border-0">
     <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700">{icon}</span>
-    <span className="min-w-0 flex-1"><span className="block text-xs font-semibold leading-relaxed text-brand-950 group-hover:text-brand-700">{title}</span><span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{hint}</span></span>
+    <span className="min-w-0 flex-1"><span className="block text-xs font-semibold leading-relaxed text-brand-950 group-hover:text-brand-700">{title}</span><span className="mt-1 block text-[11px] leading-relaxed text-slate-500 [overflow-wrap:anywhere]">{hint}</span></span>
     <ChevronRight className="mt-2 size-3.5 shrink-0 text-slate-300 group-hover:text-brand-700" />
   </Link>;
 }

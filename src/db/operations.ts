@@ -1,5 +1,5 @@
 import { can, type Permission } from "@/auth/roles";
-import { currentUndoCapture, db } from "./db";
+import { currentUndoCapture, db, setTransactionActor } from "./db";
 import type { User } from "./types";
 
 export const businessTables = () => [db.users, db.settings, db.customers, db.tickets, db.units, db.parts, db.cash, db.dayCloses, db.corrections, db.audit, db.photos, db.outbox];
@@ -10,6 +10,7 @@ export async function operation<T>(user: User, permission: Permission, fn: (acto
   return db.transaction("rw", businessTables(), async () => {
     const actor = await db.users.get(user.id);
     if (!actor?.active || !can(actor.role, permission)) throw new Error("Anda tidak memiliki akses untuk tindakan ini");
+    setTransactionActor(actor.id);
     currentUndoCapture()?.permissions.add(permission);
     return fn(actor);
   });

@@ -7,9 +7,24 @@ import { addPhoto, deletePhoto } from "@/db/photos";
 import type { Photo } from "@/db/types";
 import { cn } from "@/lib/cn";
 import { compressImage } from "@/lib/image";
+import { createPendingPhotoBatch } from "@/lib/pending-photo-batch";
+import { useDialog } from "@/components/ui/use-dialog";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Camera, Trash2 } from "lucide-react";
+import { Camera, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+function FullPhoto({ url, onClose }: { url: string; onClose: () => void; }) {
+  const ref = useDialog(true, onClose);
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/90 p-4" onClick={onClose}>
+      <div ref={ref} role="dialog" aria-modal aria-label="Foto ukuran penuh" tabIndex={-1} className="relative flex max-h-full max-w-full items-center justify-center" onClick={(event) => event.stopPropagation()}>
+        <button type="button" aria-label="Tutup foto" onClick={onClose} className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-xl bg-slate-950/70 text-white"><X /></button>
+        <img src={url} alt="Foto ukuran penuh" className="max-h-[calc(100dvh-2rem)] max-w-full rounded-lg object-contain" />
+      </div>
+    </div>, document.body,
+  );
+}
 
 function useObjectUrl(blob: Blob | undefined): string | undefined {
   const [url, setUrl] = useState<string>();
@@ -38,6 +53,7 @@ export function PhotoThumb({
       <div className={cn("relative", className)}>
         <button
           type="button"
+          aria-label="Lihat foto ukuran penuh"
           onClick={() => setFull(true)}
           className="block h-full w-full"
         >
@@ -60,14 +76,7 @@ export function PhotoThumb({
           </button>
         )}
       </div>
-      {full && url && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/90 p-4"
-          onClick={() => setFull(false)}
-        >
-          <img src={url} alt="Foto" className="max-h-full max-w-full rounded-lg" />
-        </div>
-      )}
+      {full && url && <FullPhoto url={url} onClose={() => setFull(false)} />}
     </>
   );
 }
@@ -184,28 +193,54 @@ export function PendingPhotos({
   blobs,
   onChange,
   label = "Tambah foto",
+  onBusyChange,
+  disabled = false,
 }: {
   blobs: Blob[];
   onChange: (b: Blob[]) => void;
   label?: string;
+  onBusyChange?: (busy: boolean) => void;
+  disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const latest = useRef({ blobs, onChange, onBusyChange, toast });
+  latest.current = { blobs, onChange, onBusyChange, toast };
+  const batch = useRef<ReturnType<typeof createPendingPhotoBatch> | null>(null);
+  if (!batch.current) batch.current = createPendingPhotoBatch({
+    compress: compressImage,
+    append: (added) => {
+      const next = [...latest.current.blobs, ...added];
+      latest.current.blobs = next;
+      latest.current.onChange(next);
+    },
+    busy: (value) => { setBusy(value); latest.current.onBusyChange?.(value); },
+    error: (error) => latest.current.toast(error instanceof Error ? error.message : "Gagal menyiapkan foto", "error"),
+  });
+  useEffect(() => () => { batch.current?.cancel(); }, []);
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-4 gap-2" aria-busy={busy}>
       {blobs.map((b, i) => (
         <PendingThumb
           key={i}
           blob={b}
-          onDelete={() => onChange(blobs.filter((_, j) => j !== i))}
+          onDelete={!busy && !disabled ? () => {
+            if (batch.current?.busy) return;
+            const next = latest.current.blobs.filter((photo) => photo !== b);
+            latest.current.blobs = next;
+            latest.current.onChange(next);
+          } : undefined}
         />
       ))}
       <button
         type="button"
+        disabled={busy || disabled}
         onClick={() => inputRef.current?.click()}
         className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 text-slate-400 hover:border-brand-400 hover:text-brand-500"
       >
         <Camera className="size-5" />
-        <span className="text-[10px]">{label}</span>
+        <span className="text-[10px]" role="status">{busy ? "Menyiapkan…" : label}</span>
       </button>
       <input
         ref={inputRef}
@@ -214,26 +249,28 @@ export function PendingPhotos({
         capture="environment"
         multiple
         hidden
-        onChange={async (e) => {
-          const files = e.target.files;
-          if (!files) return;
-          const out = [...blobs];
-          for (const f of Array.from(files)) out.push(await compressImage(f));
-          onChange(out);
+        disabled={busy || disabled}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
           e.target.value = "";
+          if (!disabled) void batch.current?.add(files);
         }}
       />
     </div>
   );
 }
 
-function PendingThumb({ blob, onDelete }: { blob: Blob; onDelete: () => void; }) {
+function PendingThumb({ blob, onDelete }: { blob: Blob; onDelete?: () => void; }) {
   const url = useObjectUrl(blob);
+  const [full, setFull] = useState(false);
   return (
     <div className="relative aspect-square">
+      <button type="button" aria-label="Lihat foto ukuran penuh" onClick={() => setFull(true)} className="h-full w-full">
       {url && (
         <img src={url} alt="Foto" className="h-full w-full rounded-xl object-cover" />
       )}
+      </button>
+      {onDelete && (
       <button
         type="button"
         onClick={onDelete}
@@ -242,6 +279,8 @@ function PendingThumb({ blob, onDelete }: { blob: Blob; onDelete: () => void; })
       >
         <Trash2 className="size-3.5" />
       </button>
+      )}
+      {full && url && <FullPhoto url={url} onClose={() => setFull(false)} />}
     </div>
   );
 }

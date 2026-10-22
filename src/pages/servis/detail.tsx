@@ -74,6 +74,7 @@ export function ServisDetailPage() {
   const [method, setMethod] = useState<CashMethod>("tunai");
   const [partModal, setPartModal] = useState(false);
   const [partId, setPartId] = useState("");
+  const selectedPart = parts?.find((part) => part.id === partId);
   const [qty, setQty] = useState(1);
   const [cancelModal, setCancelModal] = useState<Ticket | null>(null);
   const [refundDp, setRefundDp] = useState(true);
@@ -253,7 +254,7 @@ export function ServisDetailPage() {
               </p>
             )}
             <div className="mt-4 border-t border-slate-100 pt-3 lg:mt-5 lg:pt-4">
-              <Row label={(ticket.hargaFinal ?? ticket.biayaJasa > 0) ? "Biaya jasa" : "Estimasi biaya"}>
+              <Row label={(ticket.hargaFinal ?? ticket.biayaJasa > 0) ? "Biaya jasa tambahan" : "Estimasi jasa tambahan"}>
                 <span className="flex items-center justify-end gap-2">
                   {rp(ticketJasa(ticket))}
                   {canRevise && (
@@ -448,11 +449,11 @@ export function ServisDetailPage() {
         <div className="space-y-4">
           {statusModal?.to === "konfirmasi" && (
             <>
-              <Field label="Biaya jasa final" hint="Harga yang diajukan ke pelanggan (di luar sparepart).">
+              <Field label="Biaya jasa tambahan" hint="Harga sparepart sudah termasuk pemasangan. Isi 0 jika tidak ada jasa tambahan.">
                 <RpInput value={biayaJasa} onChange={setBiayaJasa} />
               </Field>
               <div className="rounded-xl bg-slate-50 p-4 text-sm">
-                <Row label="Biaya jasa">{rp(biayaJasa)}</Row>
+                <Row label="Biaya jasa tambahan">{rp(biayaJasa)}</Row>
                 <Row label="Sparepart">{rp(ticket.partsUsed.reduce((sum, p) => sum + p.harga * p.qty, 0))}</Row>
                 <Row label="Total biaya" strong>{rp(ticketTotal({ ...ticket, biayaJasa, hargaFinal: true }))}</Row>
               </div>
@@ -515,6 +516,7 @@ export function ServisDetailPage() {
               ))}
             </Select>
           </Field>
+          {selectedPart && <p className="rounded-xl bg-slate-50 p-3 text-sm [overflow-wrap:anywhere]">{selectedPart.nama}</p>}
           <Field label="Jumlah">
             <Input
               inputMode="numeric"
@@ -706,14 +708,14 @@ export function ServisDetailPage() {
       </Modal>
 
       {/* Modal revisi harga */}
-      <Modal busy={busy} open={!!revisiModal} onClose={() => setRevisiModal(null)} title="Revisi Harga Jasa">
+      <Modal busy={busy} open={!!revisiModal} onClose={() => setRevisiModal(null)} title="Revisi Jasa Tambahan">
         <div className="space-y-4">
           <div className="rounded-xl bg-slate-50 p-4 text-sm">
             <Row label="Harga sekarang" strong>
               {rp(ticketJasa(ticket))}
             </Row>
           </div>
-          <Field label="Harga jasa baru" required>
+          <Field label="Biaya jasa tambahan baru" required hint="Isi 0 jika harga sparepart sudah mencakup seluruh jasa.">
             <RpInput value={revisiJasa} onChange={setRevisiJasa} />
           </Field>
           <Field label="Alasan revisi" required hint="Contoh: setelah dibongkar ternyata IC power ikut rusak.">
@@ -732,7 +734,7 @@ export function ServisDetailPage() {
               try {
                 await run(() => reviseJasa(user, revisiModal ?? ticket, revisiJasa, note.trim()), {
                   pending: "Menyimpan revisi harga…",
-                  success: "Revisi harga jasa tercatat",
+                  success: "Revisi jasa tambahan tercatat",
                 });
                 setRevisiModal(null);
                 setNote("");

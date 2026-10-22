@@ -44,18 +44,18 @@ export function Sheet({
         )}
       >
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-200 lg:hidden" aria-hidden />
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 id={titleId} className="text-base font-semibold">{title}</h2>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <h2 id={titleId} className="min-w-0 flex-1 text-base font-semibold [overflow-wrap:anywhere]">{title}</h2>
           <button
             onClick={onClose}
             disabled={busy}
-            className="flex size-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 lg:size-8"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 lg:size-8"
             aria-label="Tutup"
           >
             <X className="size-5" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5"><fieldset disabled={busy} className="min-w-0">{children}</fieldset></div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5"><fieldset disabled={busy} className="min-w-0">{children}</fieldset></div>
       </div>
     </div>
   );

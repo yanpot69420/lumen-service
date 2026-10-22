@@ -8,7 +8,7 @@ import {
 import { cn } from "@/lib/cn";
 
 const base =
-  "ui-input w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-500/20 disabled:bg-slate-50 disabled:text-slate-500";
+  "ui-input min-w-0 w-full max-w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-500/20 disabled:bg-slate-50 disabled:text-slate-500";
 
 export const Input = forwardRef<
   HTMLInputElement,
@@ -24,7 +24,7 @@ export const Textarea = forwardRef<
 >(({ className, ...props }, ref) => (
   <textarea
     ref={ref}
-    className={cn(base, "min-h-20 py-2", className)}
+    className={cn(base, "min-h-20 py-2 [overflow-wrap:anywhere]", className)}
     {...props}
   />
 ));
@@ -34,7 +34,7 @@ export const Select = forwardRef<
   HTMLSelectElement,
   SelectHTMLAttributes<HTMLSelectElement>
 >(({ className, ...props }, ref) => (
-  <select ref={ref} className={cn(base, "h-11", className)} {...props} />
+  <select ref={ref} className={cn(base, "h-11 truncate", className)} {...props} />
 ));
 Select.displayName = "Select";
 
@@ -50,7 +50,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="mb-1.5 block text-xs font-medium text-slate-600">
         {label}
         {required && <span className="text-red-500"> *</span>}
